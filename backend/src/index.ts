@@ -1,11 +1,16 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import pinoHttp from "pino-http";
+// Imported first so an invalid/missing env var aborts startup before any
+// route module (which may read `env`) is even loaded.
+import { env } from "./config/env";
 import { logger } from "./lib/logger";
 import { errorHandler } from "./middleware/errorHandler";
+import { authLimiter, generalLimiter, publicApiLimiter } from "./middleware/rateLimit";
 import authRoutes from "./features/auth/auth.routes";
 import accountRoutes from "./features/accounts/accounts.routes";
+import accountDemoRoutes from "./features/accounts/accounts.demo.routes";
 import cardRoutes from "./features/cards/cards.routes";
 import budgetRoutes from "./features/budgets/budgets.routes";
 import claimRoutes from "./features/claims/claims.routes";
@@ -51,7 +56,14 @@ process.on("uncaughtException", (err) => {
 });
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+const PORT = env.PORT;
+
+// Trusts the reverse proxy's X-Forwarded-For so the rate limiters below key
+// on the real client IP instead of the proxy's — without this every request
+// looks like it comes from one address and shares a single bucket.
+app.set("trust proxy", 1);
+
+app.use(helmet());
 
 app.use(
   pinoHttp({
@@ -63,12 +75,19 @@ app.use(
     },
   })
 );
-app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:3000" }));
+app.use(cors({ origin: env.CORS_ORIGIN }));
 app.use(express.json({ limit: "15mb" }));
 
+// Health check sits above the limiters so uptime probes never get throttled.
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
-app.use("/api/auth", authRoutes);
+app.use("/api", generalLimiter);
+
+app.use("/api/auth", authLimiter, authRoutes);
+// Demo routes mount first: they own two specific paths under the same
+// prefix and 404 themselves outside development, falling through to the real
+// account routes below in every other case.
+app.use("/api/accounts", accountDemoRoutes);
 app.use("/api/accounts", accountRoutes);
 app.use("/api/cards", cardRoutes);
 app.use("/api/budgets", budgetRoutes);
@@ -96,7 +115,7 @@ app.use("/api/spend-policy", spendPolicyRoutes);
 app.use("/api/interbank", interbankRoutes);
 app.use("/api/alerts", alertRoutes);
 app.use("/api/developer", developerRoutes);
-app.use("/api/v1", publicApiRoutes);
+app.use("/api/v1", publicApiLimiter, publicApiRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });

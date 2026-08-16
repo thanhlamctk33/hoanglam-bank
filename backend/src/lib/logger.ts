@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import pino from "pino";
+import { env } from "../config/env";
 
 // Writes structured JSON logs to stdout (for `npm run dev` terminal) and to
 // backend/logs/app.log (NDJSON) so Promtail can tail the file and ship it to
@@ -12,7 +13,7 @@ const fileDest = pino.destination({ dest: path.join(logDir, "app.log"), mkdir: t
 
 export const logger = pino(
   {
-    level: process.env.LOG_LEVEL || "info",
+    level: env.LOG_LEVEL,
     base: { service: "hoanglam-bank-backend" },
     formatters: {
       level: (label) => ({ level: label }),
