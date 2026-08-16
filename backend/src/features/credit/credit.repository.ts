@@ -63,3 +63,63 @@ export function findOverdueInstallment(drawdownIds: string[], now: Date) {
 export function countUnfrozenAccounts(companyId: string) {
   return prisma.account.count({ where: { companyId, frozen: false } });
 }
+
+// --- Company / contract ---------------------------------------------------------
+
+export function findCompanyById(companyId: string) {
+  return prisma.company.findUnique({ where: { id: companyId } });
+}
+
+export function acceptContract(companyId: string) {
+  return prisma.company.update({ where: { id: companyId }, data: { contractAcceptedAt: new Date() } });
+}
+
+// --- Credit applies ---------------------------------------------------------------
+
+export function findCreditAppliesByCompany(companyId: string) {
+  return prisma.creditApply.findMany({ where: { companyId }, orderBy: { createdAt: "desc" } });
+}
+
+export function createCreditApply(data: {
+  companyId: string;
+  requestedAmount: number;
+  purpose?: string;
+  submittedById: string;
+}) {
+  return prisma.creditApply.create({ data: { ...data, status: "PENDING_MAKER" } });
+}
+
+export function approveCreditApplyRecord(
+  id: string,
+  data: {
+    approvedAmount: number;
+    offeredInterestRatePct: number;
+    offeredTermMonths: number;
+    makerId: string | null;
+    checkerId: string | null;
+    checkerNote: string;
+  }
+) {
+  return prisma.creditApply.update({
+    where: { id },
+    data: { status: "APPROVED", ...data, decidedAt: new Date() },
+  });
+}
+
+export function findStaffUsers(take: number) {
+  return prisma.user.findMany({ where: { isStaff: true }, take });
+}
+
+// --- Demo reset -----------------------------------------------------------------------
+
+export function deleteDrawdownsByCompany(companyId: string) {
+  return prisma.drawdown.deleteMany({ where: { companyId } });
+}
+
+export function deleteRepaymentsByCompany(companyId: string) {
+  return prisma.repayment.deleteMany({ where: { companyId } });
+}
+
+export function deleteCreditAppliesByCompany(companyId: string) {
+  return prisma.creditApply.deleteMany({ where: { companyId } });
+}

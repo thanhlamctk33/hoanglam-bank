@@ -1,5 +1,14 @@
-import { PLANS, SubscriptionTier } from "./plans.config";
-import { countActiveBudgets, countActiveCards, countClaimsSince, findCompanyTier } from "./subscription.repository";
+import { UnprocessableEntityError } from "../../errors/AppError";
+import { writeAuditLog, resolveActorEmail } from "../../shared/audit/audit.service";
+import { PLANS, PLAN_ORDER, SubscriptionTier } from "./plans.config";
+import {
+  countActiveBudgets,
+  countActiveCards,
+  countClaimsSince,
+  findCompanySubscription,
+  findCompanyTier,
+  updateCompanyTier,
+} from "./subscription.repository";
 
 export async function getCompanyTier(companyId: string): Promise<SubscriptionTier> {
   const company = await findCompanyTier(companyId);
@@ -55,4 +64,81 @@ export async function checkLimit(
     };
   }
   return { allowed: true };
+}
+
+/** The Settings → Subscription overview: current tier, live usage, and the full plan catalogue. */
+export async function getSubscriptionOverview(companyId: string) {
+  const company = await findCompanySubscription(companyId);
+  const tier = (company?.tier as SubscriptionTier) ?? "FREE";
+  const usage = await getUsage(companyId);
+
+  return {
+    tier,
+    plan: PLANS[tier],
+    usage,
+    updatedAt: company?.subscriptionUpdatedAt ?? null,
+    plans: PLAN_ORDER.map((t) => PLANS[t]),
+  };
+}
+
+export async function changeTier(companyId: string, nextTier: SubscriptionTier, userId: string) {
+  const currentTier = await getCompanyTier(companyId);
+
+  if (currentTier === nextTier) {
+    throw new UnprocessableEntityError(`You're already on the ${PLANS[currentTier].name} plan.`);
+  }
+
+  // Downgrading is blocked while the company is still over the target plan's
+  // caps — otherwise they'd sit above their limit with no way for the app to
+  // reconcile which cards/budgets to disable.
+  const nextPlan = PLANS[nextTier];
+  const usage = await getUsage(companyId);
+  const overCards = nextPlan.maxActiveCards !== null && usage.activeCards > nextPlan.maxActiveCards;
+  const overBudgets = nextPlan.maxActiveBudgets !== null && usage.activeBudgets > nextPlan.maxActiveBudgets;
+  const overClaims = nextPlan.maxClaimsPerMonth !== null && usage.claimsThisMonth > nextPlan.maxClaimsPerMonth;
+
+  if (overCards || overBudgets || overClaims) {
+    throw new UnprocessableEntityError(
+      `Your current usage exceeds the ${nextPlan.name} plan's limits. Reduce active cards, budgets, or claims before switching down.`
+    );
+  }
+
+  const company = await updateCompanyTier(companyId, nextTier);
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_CHANGED",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "Company",
+    targetId: companyId,
+    metadata: { from: currentTier, to: nextTier },
+  });
+
+  return {
+    tier: company.tier,
+    plan: PLANS[company.tier as SubscriptionTier],
+    updatedAt: company.subscriptionUpdatedAt,
+  };
+}
+
+/**
+ * Testing convenience: drops straight back to FREE, skipping the usage checks
+ * in changeTier above so a tester can always get to a clean slate.
+ */
+export async function resetTier(companyId: string, userId: string) {
+  const currentTier = await getCompanyTier(companyId);
+  const company = await updateCompanyTier(companyId, "FREE");
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_CHANGED",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "Company",
+    targetId: companyId,
+    metadata: { from: currentTier, to: "FREE", reason: "test_reset" },
+  });
+
+  return {
+    tier: company.tier,
+    plan: PLANS[company.tier as SubscriptionTier],
+    updatedAt: company.subscriptionUpdatedAt,
+  };
 }

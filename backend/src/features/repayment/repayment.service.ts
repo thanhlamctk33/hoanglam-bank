@@ -1,7 +1,8 @@
 import { Prisma, RepaymentMethod } from "@prisma/client";
-import { addMonths } from "../credit/credit.service";
+import { addMonths, getActiveCreditApply, getOrCreatePrimaryAccount } from "../credit/credit.service";
 import { LATE_FEE_PCT, BALLOON_PRINCIPAL_PCT } from "../credit/lending.config";
-import { writeAuditLog } from "../../shared/audit/audit.service";
+import { BadRequestError, LockedError, NotFoundError, UnprocessableEntityError } from "../../errors/AppError";
+import { writeAuditLog, resolveActorEmail } from "../../shared/audit/audit.service";
 import { canDebit, chargeOverdraftFeeIfNeeded } from "../../shared/overdraft/overdraft.service";
 import {
   findDrawdownIdsByCompany,
@@ -12,6 +13,18 @@ import {
   findDueInstallments,
   findAccountForAutoDeduct,
   runInTransaction,
+  findRepaymentsByCompany,
+  createRepayment,
+  deleteRepaymentsByCompany,
+  findOwnDrawdown,
+  findDrawdownsByCompany,
+  findCreditAppliesByCompany,
+  decrementDrawnAmount,
+  setDrawnAmount,
+  resetInstallments,
+  findOwnAccount,
+  decrementBalance,
+  createTransactionRecord,
 } from "./repayment.repository";
 
 function round2(n: number): number {
@@ -261,10 +274,10 @@ export async function processDueAutoDeductions(companyId: string): Promise<void>
 
     await runInTransaction(async (tx) => {
       const waterfall = await applyPaymentToDrawdown(tx, drawdown.id, totalDue);
-      await tx.account.update({ where: { id: account.id }, data: { balance: { decrement: totalDue } } });
+      await decrementBalance(account.id, totalDue, tx);
       await chargeOverdraftFeeIfNeeded(tx, account, autoDeductBalanceBefore, autoDeductBalanceBefore - totalDue);
-      await tx.transaction.create({
-        data: {
+      await createTransactionRecord(
+        {
           accountId: account.id,
           amount: totalDue,
           currency: account.currency,
@@ -272,13 +285,11 @@ export async function processDueAutoDeductions(companyId: string): Promise<void>
           description: "Auto-deduct repayment",
           category: "Repayment",
         },
-      });
-      await tx.creditApply.update({
-        where: { id: drawdown.creditApplyId },
-        data: { drawnAmount: { decrement: waterfall.totalPrincipal } },
-      });
-      await tx.repayment.create({
-        data: {
+        tx
+      );
+      await decrementDrawnAmount(drawdown.creditApplyId, waterfall.totalPrincipal, tx);
+      await createRepayment(
+        {
           amount: totalDue,
           companyId,
           creditApplyId: drawdown.creditApplyId,
@@ -290,7 +301,8 @@ export async function processDueAutoDeductions(companyId: string): Promise<void>
           interestPaid: waterfall.totalInterest,
           feePaid: waterfall.totalFee,
         },
-      });
+        tx
+      );
     });
 
     await writeAuditLog({
@@ -301,4 +313,165 @@ export async function processDueAutoDeductions(companyId: string): Promise<void>
       metadata: { amount: totalDue.toString() },
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Route-facing operations — repayment.routes.ts is a thin validate-then-call
+// wrapper over everything below.
+// ---------------------------------------------------------------------------
+
+export async function listRepayments(companyId: string) {
+  await processDueAutoDeductions(companyId);
+  return findRepaymentsByCompany(companyId);
+}
+
+export interface MakeRepaymentParams {
+  amount: number;
+  accountId?: string;
+  /**
+   * Which loan this repayment targets. Omitted (or a REVOLVING drawdown)
+   * pays down the pooled outstanding balance directly. A scheduled drawdown
+   * (AMORTIZING/INTEREST_ONLY/BALLOON) instead applies the payment to its
+   * installments waterfall-style — fee, then interest, then principal,
+   * oldest due date first.
+   */
+  drawdownId?: string;
+}
+
+export async function makeRepayment(companyId: string, userId: string, params: MakeRepaymentParams) {
+  const { amount, accountId, drawdownId } = params;
+
+  const creditApply = await getActiveCreditApply(companyId);
+  if (!creditApply || creditApply.status !== "APPROVED") {
+    throw new UnprocessableEntityError("No active credit line to repay.");
+  }
+  const outstanding = Number(creditApply.drawnAmount);
+  if (outstanding <= 0) {
+    throw new UnprocessableEntityError("No outstanding balance to repay.");
+  }
+
+  let targetDrawdown = null;
+  if (drawdownId) {
+    targetDrawdown = await findOwnDrawdown(companyId, drawdownId);
+    if (!targetDrawdown) {
+      throw new NotFoundError("Drawdown not found");
+    }
+  }
+  const isScheduled = !!targetDrawdown && targetDrawdown.repaymentMethod !== "REVOLVING";
+
+  const maxPayable = isScheduled ? await getDrawdownOutstanding(targetDrawdown!.id) : outstanding;
+  if (maxPayable <= 0) {
+    throw new UnprocessableEntityError("No outstanding balance to repay on this loan.");
+  }
+  if (amount > maxPayable) {
+    throw new UnprocessableEntityError(`Amount exceeds outstanding balance (${maxPayable.toFixed(2)}).`);
+  }
+
+  let account;
+  if (accountId) {
+    account = await findOwnAccount(companyId, accountId);
+    if (!account) {
+      throw new BadRequestError("Account not found in this company");
+    }
+  } else {
+    account = await getOrCreatePrimaryAccount(companyId);
+  }
+  if (account.frozen) {
+    throw new LockedError("This account is frozen");
+  }
+  if (!canDebit(account, amount)) {
+    throw new UnprocessableEntityError("Insufficient balance in the selected account");
+  }
+
+  const repaymentBalanceBefore = Number(account.balance);
+  const payingAccount = account;
+
+  const repayment = await runInTransaction(async (tx) => {
+    let principalPaid = amount;
+    let interestPaid = 0;
+    let feePaid = 0;
+
+    if (isScheduled) {
+      const waterfall = await applyPaymentToDrawdown(tx, targetDrawdown!.id, amount);
+      principalPaid = waterfall.totalPrincipal;
+      interestPaid = waterfall.totalInterest;
+      feePaid = waterfall.totalFee;
+    }
+
+    const updatedCreditApply = await decrementDrawnAmount(creditApply.id, principalPaid, tx);
+
+    await decrementBalance(payingAccount.id, amount, tx);
+    await chargeOverdraftFeeIfNeeded(tx, payingAccount, repaymentBalanceBefore, repaymentBalanceBefore - amount);
+
+    await createTransactionRecord(
+      {
+        accountId: payingAccount.id,
+        amount,
+        currency: payingAccount.currency,
+        type: "DEBIT",
+        description: "Repayment towards credit line",
+        category: "Repayment",
+      },
+      tx
+    );
+
+    return createRepayment(
+      {
+        amount,
+        companyId,
+        creditApplyId: updatedCreditApply.id,
+        drawdownId: targetDrawdown?.id,
+        accountId: payingAccount.id,
+        requestedById: userId,
+        source: "MANUAL",
+        principalPaid,
+        interestPaid,
+        feePaid,
+      },
+      tx
+    );
+  });
+
+  await writeAuditLog({
+    action: "REPAYMENT_COMPLETED",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "CreditApply",
+    targetId: creditApply.id,
+    metadata: { amount: amount.toString(), drawdownId: targetDrawdown?.id },
+  });
+
+  return repayment;
+}
+
+/**
+ * Undoes every repayment this company has made — deletes all Repayment rows,
+ * resets every installment's paid/fee/status fields back to a fresh PENDING
+ * state (as if just disbursed, including clearing any accrued late fee), and
+ * recomputes each CreditApply's drawnAmount from its drawdowns alone (i.e. as
+ * if nothing had been repaid yet). Drawdowns themselves are left untouched —
+ * unlike /drawdown/reset-demo, this only rewinds the repayment side. Account
+ * balances and past Transactions are left alone, same simplification as the
+ * other resets.
+ */
+export async function resetDemoData(companyId: string, userId: string) {
+  await deleteRepaymentsByCompany(companyId);
+
+  const drawdowns = await findDrawdownsByCompany(companyId);
+  const drawdownIds = drawdowns.map((d) => d.id);
+  if (drawdownIds.length > 0) {
+    await resetInstallments(drawdownIds);
+  }
+
+  const creditApplies = await findCreditAppliesByCompany(companyId);
+  for (const apply of creditApplies) {
+    const total = drawdowns.filter((d) => d.creditApplyId === apply.id).reduce((sum, d) => sum + Number(d.amount), 0);
+    await setDrawnAmount(apply.id, total);
+  }
+
+  await writeAuditLog({
+    action: "REPAYMENT_DEMO_RESET",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "Company",
+    targetId: companyId,
+  });
 }

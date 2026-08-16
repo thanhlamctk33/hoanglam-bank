@@ -6,6 +6,8 @@ import { z } from "zod";
 import { requireAuth, AuthedRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import { ServiceUnavailableError, ValidationError } from "../../errors/AppError";
+import { isAiConfigured } from "../../config/env";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 router.use(requireAuth);
@@ -21,7 +23,7 @@ function loadAppGuide(): string {
   try {
     return fs.readFileSync(KNOWLEDGE_PATH, "utf-8");
   } catch (err) {
-    console.error("Failed to read app guide knowledge file:", err);
+    logger.error({ err }, "Failed to read app guide knowledge file");
     return "";
   }
 }
@@ -58,13 +60,21 @@ router.post(
       throw new ValidationError(parsed.error);
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!isAiConfigured) {
       throw new ServiceUnavailableError("AI assistant is not configured. Set ANTHROPIC_API_KEY in backend/.env.");
     }
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache");
 
+    // Deliberately a local try/catch instead of throwing (the convention
+    // used everywhere else — see middleware/errorHandler.ts): this response
+    // streams text chunks via res.write() as they arrive, so by the time the
+    // Anthropic call fails, headers/body bytes may already be on the wire.
+    // The central error handler no-ops once headersSent is true, so this is
+    // the only place that can still decide how to fail — a clean 502 if
+    // nothing was sent yet, or just ending the stream if it was already
+    // underway.
     try {
       const stream = client.messages.stream({
         model: "claude-opus-5",
@@ -80,7 +90,7 @@ router.post(
       await stream.finalMessage();
       res.end();
     } catch (err) {
-      console.error("Assistant chat error:", err);
+      logger.error({ err }, "Assistant chat error");
       if (!res.headersSent) {
         res.status(502).json({ error: "Failed to reach the AI assistant." });
       } else {

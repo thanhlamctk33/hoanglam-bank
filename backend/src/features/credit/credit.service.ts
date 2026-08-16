@@ -1,3 +1,6 @@
+import { NotFoundError, UnprocessableEntityError } from "../../errors/AppError";
+import { writeAuditLog, resolveActorEmail } from "../../shared/audit/audit.service";
+import { MIN_CREDIT_APPLY_AMOUNT, DEFAULT_INTEREST_RATE_PCT, DEFAULT_TERM_MONTHS } from "./lending.config";
 import {
   findActiveCreditApply,
   findFirstAccountByCompany,
@@ -11,6 +14,15 @@ import {
   findDrawdownIdsByCompany,
   findOverdueInstallment,
   countUnfrozenAccounts,
+  findCompanyById,
+  acceptContract,
+  findCreditAppliesByCompany,
+  createCreditApply,
+  approveCreditApplyRecord,
+  findStaffUsers,
+  deleteDrawdownsByCompany,
+  deleteRepaymentsByCompany,
+  deleteCreditAppliesByCompany,
 } from "./credit.repository";
 
 const RISK_LOOKBACK_MONTHS = 3;
@@ -227,4 +239,161 @@ export async function getDrawdownConditions(companyId: string): Promise<Drawdown
     accountAvailable,
     allMet: kybApproved && contractSigned && !!creditApproved && noOverduePayments && accountAvailable,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Route-facing operations — credit.routes.ts is a thin validate-then-call
+// wrapper over everything below.
+// ---------------------------------------------------------------------------
+
+/** The customer-facing Credit page: KYB/contract state, the live line, and past applications. */
+export async function getCreditOverview(companyId: string) {
+  const company = await findCompanyKybAndContract(companyId);
+  const activeCreditApply = await getActiveCreditApply(companyId);
+  const history = await findCreditAppliesByCompany(companyId);
+
+  const monitoring =
+    activeCreditApply && activeCreditApply.status === "APPROVED" ? await getCreditMonitoring(activeCreditApply.id) : null;
+
+  return {
+    kybStatus: company?.kybStatus ?? "NOT_STARTED",
+    contractAcceptedAt: company?.contractAcceptedAt ?? null,
+    creditApply: activeCreditApply,
+    availableAmount: availableAmount(activeCreditApply),
+    monitoring,
+    history,
+  };
+}
+
+export interface ApplyForCreditParams {
+  requestedAmount: number;
+  purpose?: string;
+}
+
+/**
+ * Lets a company apply for its own credit line instead of waiting for a bank
+ * contact to submit one on their behalf. Starts at PENDING_MAKER — a staff
+ * member still reviews it (and can see a risk snapshot) before forwarding it
+ * to a different staff member (checker) for the final call.
+ */
+export async function applyForCredit(companyId: string, userId: string, params: ApplyForCreditParams) {
+  const { requestedAmount, purpose } = params;
+
+  if (requestedAmount < MIN_CREDIT_APPLY_AMOUNT) {
+    throw new UnprocessableEntityError(`Minimum credit apply amount is $${MIN_CREDIT_APPLY_AMOUNT.toLocaleString()}.`);
+  }
+
+  const company = await findCompanyById(companyId);
+  if (!company) {
+    throw new NotFoundError("Company not found");
+  }
+  if (company.kybStatus !== "APPROVED") {
+    throw new UnprocessableEntityError("Complete business verification (KYB) before applying for credit.");
+  }
+  if (!company.contractAcceptedAt) {
+    throw new UnprocessableEntityError("Sign the lending contract before applying for credit.");
+  }
+
+  const existing = await getActiveCreditApply(companyId);
+  if (existing) {
+    throw new UnprocessableEntityError("You already have a credit application in progress or an active line.");
+  }
+
+  const creditApply = await createCreditApply({ companyId, requestedAmount, purpose, submittedById: userId });
+
+  await writeAuditLog({
+    action: "CREDIT_APPLY_SUBMITTED",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "CreditApply",
+    targetId: creditApply.id,
+    metadata: { requestedAmount: requestedAmount.toString() },
+  });
+
+  return creditApply;
+}
+
+export async function acceptLendingContract(companyId: string, userId: string) {
+  const company = await findCompanyById(companyId);
+  if (!company) {
+    throw new NotFoundError("Company not found");
+  }
+  if (company.kybStatus !== "APPROVED") {
+    throw new UnprocessableEntityError("Complete business verification (KYB) before accepting lending terms.");
+  }
+  if (company.contractAcceptedAt) {
+    throw new UnprocessableEntityError("Contract already signed.");
+  }
+
+  const updated = await acceptContract(company.id);
+
+  await writeAuditLog({
+    action: "CONTRACT_SIGNED",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "Company",
+    targetId: company.id,
+  });
+
+  return updated.contractAcceptedAt;
+}
+
+/**
+ * Wipes this company's lending history (CreditApply + Drawdown + Repayment
+ * rows) so the apply-for-credit flow can be tried again from a clean slate.
+ * Deliberately leaves account balances and past Transactions untouched —
+ * those stay as a record of money that already moved, same as if a real loan
+ * had simply been paid off and closed.
+ */
+export async function resetDemoData(companyId: string, userId: string) {
+  await deleteDrawdownsByCompany(companyId);
+  await deleteRepaymentsByCompany(companyId);
+  await deleteCreditAppliesByCompany(companyId);
+
+  await writeAuditLog({
+    action: "CREDIT_DEMO_RESET",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "Company",
+    targetId: companyId,
+  });
+}
+
+/**
+ * Skips the maker-checker review entirely and approves whatever's pending
+ * (PENDING_MAKER or PENDING_CHECKER) at the app-wide default rate/tenor, so
+ * the Drawdown/Repayment tabs have something to work with without needing two
+ * separate staff logins. Real approvals still go through
+ * /admin/credit-applies/:id/approve.
+ */
+export async function autoApproveForDemo(companyId: string, userId: string) {
+  const creditApply = await getActiveCreditApply(companyId);
+  if (!creditApply) {
+    throw new UnprocessableEntityError("No credit application to approve.");
+  }
+  if (creditApply.status === "APPROVED") {
+    throw new UnprocessableEntityError("This credit line is already approved.");
+  }
+  if (creditApply.status === "REJECTED") {
+    throw new UnprocessableEntityError("This application was rejected — apply again first.");
+  }
+
+  const staffUsers = await findStaffUsers(2);
+  const makerId = creditApply.makerId ?? staffUsers[0]?.id ?? null;
+  const checkerId = staffUsers[1]?.id ?? staffUsers[0]?.id ?? null;
+
+  const updated = await approveCreditApplyRecord(creditApply.id, {
+    approvedAmount: Number(creditApply.approvedAmount ?? creditApply.requestedAmount),
+    offeredInterestRatePct: Number(creditApply.offeredInterestRatePct ?? DEFAULT_INTEREST_RATE_PCT),
+    offeredTermMonths: creditApply.offeredTermMonths ?? DEFAULT_TERM_MONTHS,
+    makerId,
+    checkerId,
+    checkerNote: "Auto-approved for testing.",
+  });
+
+  await writeAuditLog({
+    action: "CREDIT_APPLY_AUTO_APPROVED_DEMO",
+    actorEmail: await resolveActorEmail(userId),
+    targetType: "CreditApply",
+    targetId: creditApply.id,
+  });
+
+  return updated;
 }

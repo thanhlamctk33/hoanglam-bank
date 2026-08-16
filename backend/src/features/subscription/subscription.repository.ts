@@ -16,3 +16,18 @@ export function countActiveBudgets(companyId: string) {
 export function countClaimsSince(companyId: string, since: Date) {
   return prisma.claim.count({ where: { companyId, submittedAt: { gte: since } } });
 }
+
+export function findCompanySubscription(companyId: string) {
+  return prisma.company.findUnique({
+    where: { id: companyId },
+    select: { tier: true, subscriptionUpdatedAt: true },
+  });
+}
+
+export function updateCompanyTier(companyId: string, tier: "FREE" | "PRO" | "BUSINESS") {
+  return prisma.company.update({
+    where: { id: companyId },
+    data: { tier, subscriptionUpdatedAt: new Date() },
+    select: { tier: true, subscriptionUpdatedAt: true },
+  });
+}

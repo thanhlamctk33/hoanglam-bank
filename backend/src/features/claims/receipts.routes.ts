@@ -1,10 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../../lib/prisma";
 import { requireAuth, AuthedRequest } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
-import { NotFoundError, ValidationError } from "../../errors/AppError";
-import { extractReceiptFields, OCR_MIME_TYPES } from "./ocr.service";
+import { ValidationError } from "../../errors/AppError";
+import * as receiptsService from "./receipts.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -12,11 +11,7 @@ router.use(requireAuth);
 router.get(
   "/",
   asyncHandler<AuthedRequest>(async (req, res) => {
-    const receipts = await prisma.receipt.findMany({
-      where: { companyId: req.companyId },
-      include: { uploadedBy: { select: { id: true, name: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    const receipts = await receiptsService.listReceipts(req.companyId);
     res.json({ receipts });
   })
 );
@@ -34,33 +29,8 @@ router.post(
     if (!parsed.success) {
       throw new ValidationError(parsed.error);
     }
-    const { imageBase64, filename, mimeType } = parsed.data;
 
-    let extractedTitle: string | null = null;
-    let extractedAmount: number | null = null;
-
-    if (process.env.ANTHROPIC_API_KEY && (OCR_MIME_TYPES as readonly string[]).includes(mimeType)) {
-      try {
-        const result = await extractReceiptFields(imageBase64, mimeType as (typeof OCR_MIME_TYPES)[number]);
-        extractedTitle = result.title;
-        extractedAmount = result.amount;
-      } catch (err) {
-        console.error("Receipt library OCR error:", err);
-      }
-    }
-
-    const receipt = await prisma.receipt.create({
-      data: {
-        url: `data:${mimeType};base64,${imageBase64}`,
-        filename,
-        mimeType,
-        extractedTitle,
-        extractedAmount,
-        companyId: req.companyId!,
-        uploadedById: req.userId!,
-      },
-      include: { uploadedBy: { select: { id: true, name: true } } },
-    });
+    const receipt = await receiptsService.uploadReceipt(req.companyId, req.userId, parsed.data);
     res.status(201).json({ receipt });
   })
 );
@@ -68,13 +38,7 @@ router.post(
 router.delete(
   "/:id",
   asyncHandler<AuthedRequest>(async (req, res) => {
-    const receipt = await prisma.receipt.findFirst({
-      where: { id: req.params.id, companyId: req.companyId },
-    });
-    if (!receipt) {
-      throw new NotFoundError("Receipt not found");
-    }
-    await prisma.receipt.delete({ where: { id: receipt.id } });
+    await receiptsService.deleteReceipt(req.companyId, req.params.id);
     res.status(204).end();
   })
 );
