@@ -1,0 +1,56 @@
+# Local logging stack: Grafana + Loki + Promtail.
+#
+# Usage:
+#   docker compose -f docker-compose.logging.yml up -d
+#   open http://localhost:3001  (Grafana, no login needed — anonymous Admin)
+#
+# Backend writes NDJSON to backend/logs/app.log automatically (see
+# backend/src/lib/logger.ts). For frontend logs, run the Next.js dev server
+# with `npm run dev:logged` (instead of `npm run dev`) from frontend/ so its
+# output is captured to frontend/logs/app.log.
+#
+# Promtail tails both log directories and ships them to Loki; Grafana comes
+# pre-wired with a Loki datasource (see monitoring/grafana-provisioning).
+services:
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: hoanglam-bank-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: hoanglam-bank-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./backend/logs:/var/log/backend:ro
+      - ./frontend/logs:/var/log/frontend:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: hoanglam-bank-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - loki
+
+volumes:
+  loki_data:
+  grafana_data:

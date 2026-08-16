@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Backend (Express/pino) emits NDJSON to backend/logs/app.log.
+  - job_name: backend
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: backend
+          service: hoanglam-bank-backend
+          __path__: /var/log/backend/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            req_method: req.method
+            req_url: req.url
+            res_status: res.statusCode
+            responseTime: responseTime
+      - labels:
+          level:
+      - timestamp:
+          source: time
+          format: UnixMs
+          fallback_formats:
+            - RFC3339Nano
+
+  # Frontend (Next.js dev server) output, captured via `npm run dev:logged`.
+  - job_name: frontend
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: frontend
+          service: hoanglam-bank-frontend
+          __path__: /var/log/frontend/*.log

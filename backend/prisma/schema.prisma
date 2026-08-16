@@ -1,0 +1,821 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CardType {
+  VIRTUAL
+  PHYSICAL
+  // Preloaded with a fixed amount from a real Cash Account at issue time
+  // (spendLimit = amount loaded) — unlike VIRTUAL/PHYSICAL, whose
+  // spendLimit/spent are purely internal counters with no Account behind
+  // them, a PREPAID card's purchases actually debit its linked `account`.
+  PREPAID
+}
+
+enum CardStatus {
+  PENDING
+  ACTIVE
+  FROZEN
+  CANCELLED
+  REJECTED
+}
+
+enum BudgetStatus {
+  PENDING
+  ACTIVE
+  FROZEN
+  REJECTED
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BillStatus {
+  UNPAID
+  PAID
+  OVERDUE
+}
+
+enum ApprovalTargetType {
+  CARD
+  BUDGET
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum KybStatus {
+  NOT_STARTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_INFO
+}
+
+enum KybDocumentType {
+  BUSINESS_REGISTRATION
+  OWNER_ID
+  PROOF_OF_ADDRESS
+  OTHER
+}
+
+enum KycIdType {
+  NATIONAL_ID
+  PASSPORT
+}
+
+enum CreditApplyStatus {
+  PENDING_MAKER
+  PENDING_CHECKER
+  APPROVED
+  REJECTED
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+// How a Drawdown's principal gets paid back. REVOLVING (the original
+// behavior) has no fixed schedule — the customer repays any amount at any
+// time against the pooled outstanding balance. The other three generate an
+// Installment schedule at drawdown time; see utils/repayment.ts.
+enum RepaymentMethod {
+  REVOLVING
+  AMORTIZING
+  INTEREST_ONLY
+  BALLOON
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum RepaymentSource {
+  MANUAL
+  AUTO_DEDUCT
+}
+
+model Company {
+  id                    String           @id @default(uuid())
+  name                  String
+  createdAt             DateTime         @default(now())
+  tier                  SubscriptionTier @default(FREE)
+  subscriptionUpdatedAt DateTime         @default(now())
+
+  kybStatus         KybStatus @default(NOT_STARTED)
+  kybSubmittedAt    DateTime?
+  kybReviewedAt     DateTime?
+  kybRejectionReason String?
+
+  // Set once the company accepts the platform's lending terms & signs the
+  // contract (gated on kybStatus === APPROVED). Required before a Credit
+  // Apply can be created for this company.
+  contractAcceptedAt DateTime?
+
+  users            User[]
+  accounts         Account[]
+  cards            Card[]
+  budgets          Budget[]
+  claims           Claim[]
+  bills            Bill[]
+  receipts         Receipt[]
+  businessProfile  BusinessProfile?
+  beneficialOwners BeneficialOwner[]
+  kybDocuments     KybDocument[]
+  spendPolicy      SpendPolicy?
+}
+
+model BusinessProfile {
+  id                    String   @id @default(uuid())
+  legalName             String
+  registrationNumber    String
+  taxCode                String
+  incorporationDate     DateTime
+  businessType          String
+  industry              String
+  registeredAddress     String
+  website               String?
+  expectedMonthlyVolume Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt             DateTime @updatedAt
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id])
+}
+
+model BeneficialOwner {
+  id            String   @id @default(uuid())
+  fullName      String
+  dateOfBirth   DateTime
+  nationality   String
+  ownershipPct  Decimal  @db.Decimal(5, 2)
+  role          String
+  idNumber      String
+  createdAt     DateTime @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+}
+
+model KybDocument {
+  id        String          @id @default(uuid())
+  type      KybDocumentType
+  filename  String
+  mimeType  String
+  url       String
+  createdAt DateTime        @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  name         String
+  role         String   @default("MEMBER")
+  isStaff      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+
+  cards        Card[]
+  budgetsOwned Budget[]
+  claims       Claim[]
+  receipts     Receipt[]
+  kycProfile   KycProfile?
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  MONEY_MARKET
+}
+
+model Account {
+  id           String      @id @default(uuid())
+  name         String
+  type         AccountType @default(CHECKING)
+  currency     String      @default("USD")
+  balance      Decimal     @default(0) @db.Decimal(18, 2)
+  accountNumber String     @unique
+  frozen       Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+
+  // How far this account may go negative before a debit is rejected — 0
+  // (the default) means no overdraft, matching the original behavior.
+  // Crossing from >=0 into negative charges a flat OVERDRAFT_FEE.
+  overdraftLimit        Decimal  @default(0) @db.Decimal(18, 2)
+  // Deposit interest (Savings/Money Market only, rate from config by
+  // AccountType) accrues lazily — whenever the account is loaded, simple
+  // interest since this timestamp is posted as a CREDIT Transaction and
+  // this is bumped to now. See utils/interest.ts.
+  lastInterestAccrualAt DateTime @default(now())
+
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id])
+
+  transactions Transaction[]
+  cards        Card[]
+}
+
+model Transaction {
+  id          String            @id @default(uuid())
+  amount      Decimal           @db.Decimal(18, 2)
+  currency    String            @default("USD")
+  type        TransactionType
+  status      TransactionStatus @default(COMPLETED)
+  description String
+  category    String?
+  // User-chosen expense category (from Settings → Categories, same list used
+  // by Card controls), distinct from `category` above which is a fixed
+  // system tag ("Transfer", "FX Transfer", "Bill Payment", ...).
+  merchantCategory String?
+  merchant    String?
+  date        DateTime          @default(now())
+
+  // Set by utils/fraud.ts when a debit is unusually large versus the
+  // account's recent average — informational only, never blocks the
+  // transaction (unlike the velocity check, which does).
+  flagged     Boolean  @default(false)
+  flagReason  String?
+
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, date])
+}
+
+model Card {
+  id         String     @id @default(uuid())
+  label      String
+  cardNumber String     @default("")
+  last4      String
+  cvv        String     @default("")
+  expMonth   Int        @default(1)
+  expYear    Int        @default(2030)
+  type       CardType
+  status     CardStatus @default(ACTIVE)
+  rejectionReason String?
+  currency   String     @default("USD")
+  spendLimit Decimal    @db.Decimal(18, 2)
+  spent      Decimal    @default(0) @db.Decimal(18, 2)
+  createdAt  DateTime   @default(now())
+
+  // Advanced controls, enforced by POST /cards/:id/simulate-purchase (this
+  // app has no real card network, so that endpoint is the only place a
+  // "purchase" actually happens — it exists specifically so these controls
+  // are real rules and not just cosmetic settings).
+  allowOnline       Boolean @default(true)
+  allowAtm          Boolean @default(true)
+  blockedCategories String? // JSON string array, e.g. ["Travel","Entertainment"]
+
+  companyId  String
+  company    Company    @relation(fields: [companyId], references: [id])
+
+  ownerId    String?
+  owner      User?      @relation(fields: [ownerId], references: [id])
+
+  budgetId   String?
+  budget     Budget?    @relation(fields: [budgetId], references: [id])
+
+  // Only set for PREPAID cards — the Cash Account that was, and continues
+  // to be, debited as this card is spent from.
+  accountId  String?
+  account    Account?   @relation(fields: [accountId], references: [id])
+}
+
+model Budget {
+  id        String       @id @default(uuid())
+  name      String
+  amount    Decimal      @db.Decimal(18, 2)
+  spent     Decimal      @default(0) @db.Decimal(18, 2)
+  currency  String       @default("USD")
+  period    BudgetPeriod @default(MONTHLY)
+  status    BudgetStatus @default(ACTIVE)
+  rejectionReason String?
+  startDate DateTime     @default(now())
+  createdAt DateTime     @default(now())
+
+  companyId String
+  company   Company      @relation(fields: [companyId], references: [id])
+
+  ownerId   String?
+  owner     User?        @relation(fields: [ownerId], references: [id])
+
+  cards     Card[]
+}
+
+// Company-wide spend rules, configured at Spend > Policies by an Admin.
+// One row per company (lazily created on first GET). `cardSpendLimitCap` /
+// `budgetAmountCap` are hard ceilings — a card or budget can't be created
+// above them at all. `approvalThreshold` is a soft rule — a card or budget
+// at or above this amount always requires Admin approval, even from a
+// requester who'd normally skip the approval queue (Admin/staff).
+// `claimFlagLimit` replaces what used to be a hardcoded constant in
+// claims.ts, so it's the one field that's never null (always has a value).
+model SpendPolicy {
+  id                String   @id @default(uuid())
+  cardSpendLimitCap Decimal? @db.Decimal(18, 2)
+  budgetAmountCap   Decimal? @db.Decimal(18, 2)
+  approvalThreshold Decimal? @db.Decimal(18, 2)
+  claimFlagLimit    Decimal  @default(500) @db.Decimal(18, 2)
+  // Fraud/velocity control: if set, blocks a debit that would be the
+  // (velocityMaxCount + 1)th DEBIT transaction on its account within the
+  // trailing velocityWindowMinutes. Null (default) means no velocity limit.
+  velocityMaxCount       Int?
+  velocityWindowMinutes  Int      @default(60)
+  updatedAt         DateTime @updatedAt
+  updatedById       String?
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id])
+}
+
+model ApprovalRequest {
+  id         String              @id @default(uuid())
+  targetType ApprovalTargetType
+  targetId   String
+  status     ApprovalStatus      @default(PENDING)
+  reason     String?
+  metadata   String?
+  createdAt  DateTime            @default(now())
+  reviewedAt DateTime?
+
+  companyId    String
+  requesterId  String
+  reviewerId   String?
+
+  @@index([companyId, status])
+  @@index([targetType, targetId])
+}
+
+model Claim {
+  id          String      @id @default(uuid())
+  title       String
+  amount      Decimal     @db.Decimal(18, 2)
+  currency    String      @default("USD")
+  status      ClaimStatus @default(PENDING)
+  description String?
+  // User-chosen expense category from Settings → Categories (same list used
+  // by Card controls and Transaction.merchantCategory).
+  category    String?
+  receiptUrl  String?
+  // Extra receipt images/PDFs attached to the same claim beyond the primary
+  // `receiptUrl` (e.g. an itemized receipt plus a card slip for one expense).
+  additionalReceiptUrls String[] @default([])
+  flagged     Boolean     @default(false)
+  batchId     String?
+  submittedAt DateTime    @default(now())
+
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id])
+
+  submittedById String
+  submittedBy   User      @relation(fields: [submittedById], references: [id])
+
+  @@index([companyId, batchId])
+}
+
+model Receipt {
+  id              String   @id @default(uuid())
+  url             String
+  filename        String
+  mimeType        String
+  extractedTitle  String?
+  extractedAmount Decimal? @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+
+  companyId    String
+  company      Company @relation(fields: [companyId], references: [id])
+  uploadedById String
+  uploadedBy   User    @relation(fields: [uploadedById], references: [id])
+}
+
+model Bill {
+  id        String     @id @default(uuid())
+  vendor    String
+  amount    Decimal    @db.Decimal(18, 2)
+  currency  String     @default("USD")
+  status    BillStatus @default(UNPAID)
+  dueDate   DateTime
+  createdAt DateTime   @default(now())
+
+  // When set, the bill is paid automatically from this account once due —
+  // processed lazily (no background worker in this app) whenever GET /bills
+  // is called: any UNPAID bill past its dueDate with autopayAccountId set
+  // gets paid the same way the manual "Pay bill" action does.
+  autopayAccountId String?
+
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+}
+
+// A company's request for a lending credit line. Two ways in: a customer
+// admin submits it themselves (status starts at PENDING_MAKER, `submittedById`
+// set, `makerId` still empty) or bank staff creates it directly on the
+// company's behalf (status starts at PENDING_CHECKER, `makerId` set
+// immediately, `submittedById` empty). Either way it then needs a *different*
+// staff member (checker) to approve or reject it — maker-checker. At most one
+// CreditApply per company may be PENDING_MAKER, PENDING_CHECKER, or APPROVED
+// at a time — it's the company's single revolving credit line. `drawnAmount`
+// tracks cumulative principal currently drawn down and not yet repaid; it's
+// recalculated on every Drawdown and Repayment. Available credit =
+// approvedAmount - drawnAmount. `offeredInterestRatePct`/`offeredTermMonths`
+// are the pricing the checker sets when approving (the "offer") — every
+// subsequent Drawdown on this line is snapshotted at these terms instead of
+// the app-wide defaults.
+model CreditApply {
+  id                     String            @id @default(uuid())
+  requestedAmount        Decimal           @db.Decimal(18, 2)
+  purpose                String?
+  approvedAmount         Decimal?          @db.Decimal(18, 2)
+  offeredInterestRatePct Decimal?          @db.Decimal(5, 2)
+  offeredTermMonths      Int?
+  drawnAmount            Decimal           @default(0) @db.Decimal(18, 2)
+  status                 CreditApplyStatus @default(PENDING_CHECKER)
+  makerNote              String?
+  checkerNote            String?
+  createdAt              DateTime          @default(now())
+  decidedAt              DateTime?
+
+  companyId     String
+  submittedById String?
+  makerId       String?
+  checkerId     String?
+
+  @@index([companyId, status])
+}
+
+// A drawdown pulls money out of an APPROVED CreditApply's available credit
+// and deposits it into the company's cash Account (as a CREDIT Transaction),
+// after the company confirms the lending terms (rate/tenor) for this draw
+// and a set of conditions precedent are checked (see utils/credit.ts
+// getDrawdownConditions). `feeAmount` is charged separately (a DEBIT
+// transaction) and netted out of the cash actually received — it's not
+// added to the principal owed. `maturityDate` is snapshotted at drawdown
+// time (createdAt + termMonths) instead of recomputed later, matching how a
+// real facility fixes the due date the moment funds are advanced.
+model Drawdown {
+  id              String          @id @default(uuid())
+  amount          Decimal         @db.Decimal(18, 2)
+  interestRatePct Decimal         @db.Decimal(5, 2)
+  termMonths      Int
+  purpose         String?
+  feeAmount       Decimal         @default(0) @db.Decimal(18, 2)
+  maturityDate    DateTime
+  createdAt       DateTime        @default(now())
+
+  // Repayment terms for this specific drawdown. REVOLVING (default) keeps
+  // the original free-form behavior — no schedule, no auto-deduct. The
+  // others generate an Installment schedule (see utils/repayment.ts) that
+  // grace-delays the first due date, then bills principal/interest over
+  // the remaining term.
+  repaymentMethod     RepaymentMethod @default(REVOLVING)
+  graceMonths         Int             @default(0)
+  autoDeduct          Boolean         @default(false)
+  autoDeductAccountId String?
+
+  companyId     String
+  creditApplyId String
+  accountId     String
+  requestedById String
+
+  @@index([companyId, createdAt])
+  @@index([creditApplyId])
+}
+
+// One due payment in a Drawdown's Installment schedule (only exists for
+// non-REVOLVING repayment methods). A repayment applies to a company's
+// unpaid installments oldest-first, "waterfall" style: any fee owed first,
+// then interest, then principal — see utils/repayment.ts applyPaymentToDrawdown.
+model Installment {
+  id             String            @id @default(uuid())
+  drawdownId     String
+  sequence       Int
+  dueDate        DateTime
+  principalDue   Decimal           @db.Decimal(18, 2)
+  interestDue    Decimal           @db.Decimal(18, 2)
+  feeDue         Decimal           @default(0) @db.Decimal(18, 2)
+  paidPrincipal  Decimal           @default(0) @db.Decimal(18, 2)
+  paidInterest   Decimal           @default(0) @db.Decimal(18, 2)
+  paidFee        Decimal           @default(0) @db.Decimal(18, 2)
+  status         InstallmentStatus @default(PENDING)
+  lateFeeApplied Boolean           @default(false)
+  paidAt         DateTime?
+  createdAt      DateTime          @default(now())
+
+  @@index([drawdownId, sequence])
+  @@index([drawdownId, dueDate])
+}
+
+// A repayment moves money out of the company's cash Account (as a DEBIT
+// Transaction) and reduces the outstanding drawnAmount on the CreditApply.
+// When it targets a specific scheduled drawdown (drawdownId set), the
+// principal/interest/fee split reflects how the waterfall applied it to
+// that drawdown's installments; for pooled/revolving repayments the whole
+// amount counts as principal, matching the original simplified behavior.
+model Repayment {
+  id            String          @id @default(uuid())
+  amount        Decimal         @db.Decimal(18, 2)
+  source        RepaymentSource @default(MANUAL)
+  principalPaid Decimal         @default(0) @db.Decimal(18, 2)
+  interestPaid  Decimal         @default(0) @db.Decimal(18, 2)
+  feePaid       Decimal         @default(0) @db.Decimal(18, 2)
+  createdAt     DateTime        @default(now())
+
+  companyId     String
+  creditApplyId String
+  drawdownId    String?
+  accountId     String
+  requestedById String
+
+  @@index([companyId, createdAt])
+  @@index([creditApplyId])
+  @@index([drawdownId])
+}
+
+// A saved instruction to repeat an internal transfer automatically. No
+// background worker exists in this app, so due transfers are executed
+// lazily: whenever GET /transfers/recurring is called, any entry with
+// nextRunAt <= now is run then rolled forward to the next occurrence.
+model RecurringTransfer {
+  id              String             @id @default(uuid())
+  companyId       String
+  fromAccountId   String
+  toAccountNumber String
+  amount          Decimal            @db.Decimal(18, 2)
+  note            String?
+  frequency       RecurringFrequency
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  active          Boolean            @default(true)
+  createdById     String
+  createdAt       DateTime           @default(now())
+
+  @@index([companyId, active])
+}
+
+// A payee saved ahead of time, distinct from "Recent recipients" (which is
+// derived after the fact from transaction history) — lets a company name a
+// recipient before ever sending them money.
+model SavedPayee {
+  id            String   @id @default(uuid())
+  companyId     String
+  nickname      String
+  accountNumber String
+  createdAt     DateTime @default(now())
+
+  @@unique([companyId, accountNumber])
+  @@index([companyId])
+}
+
+// A company's own list of merchant categories, managed at Settings →
+// Categories. The only current consumer is Card controls (blocked
+// categories + the merchant-category picker on "Simulate a purchase") —
+// before this model existed that list was a hardcoded constant duplicated
+// in the frontend with no way for a company to customize it.
+model MerchantCategory {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+// Individual identity verification (KYC) for the person who registers a
+// company — distinct from KYB (business-level verification, above). Part of
+// the mandatory onboarding wizard: a new signup completes KYC (this model)
+// then KYB before reaching the main dashboard. Reuses KybStatus for the
+// status field rather than a duplicate enum with identical values.
+model KycProfile {
+  id             String    @id @default(uuid())
+  fullName       String
+  dateOfBirth    DateTime
+  nationality    String
+  idType         KycIdType
+  idNumber       String
+  idDocumentUrl  String? // base64 data URL, same pattern as KybDocument.url
+  status         KybStatus @default(NOT_STARTED)
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  rejectionReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  actorEmail String
+  targetType String
+  targetId   String?
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// --- Interbank Lending (Treasury) ---
+// LamBank lending its own money to *other banks* — a treasury/money-market
+// desk function, distinct from Credit (LamBank lending to its customer
+// companies). Staff-only (Operation dashboard); no customer company is
+// involved on either side. Money comes from/returns to TreasuryBook, a
+// singleton representing the bank's own capital, kept separate from every
+// customer Account/Transaction.
+
+enum InterbankLoanType {
+  UNSECURED
+  REPO
+}
+
+enum InterbankLoanStatus {
+  ACTIVE
+  SETTLED
+  DEFAULTED
+}
+
+// A bank LamBank has a lending relationship with. creditLimit is the max
+// LamBank is willing to have outstanding to this one counterparty at a time
+// (checked against the sum of its ACTIVE loans before a new one is booked).
+model CounterpartyBank {
+  id          String   @id @default(uuid())
+  name        String
+  swiftCode   String   @unique
+  creditLimit Decimal  @db.Decimal(18, 2)
+  notes       String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([name])
+}
+
+// A single interbank loan. UNSECURED is plain call/term money; REPO also
+// records the collateral LamBank holds against it. Interest is simple
+// (ACT/365) over termDays, computed at settlement — prorated to the actual
+// days held if settled before maturityDate, capped at termDays if settled
+// on/after it. There's no lazy auto-settlement (unlike customer auto-deduct)
+// — LamBank can't unilaterally pull money from another bank, so a staff
+// member confirms settlement (or marks a default) manually.
+model InterbankLoan {
+  id                    String              @id @default(uuid())
+  counterpartyId        String
+  type                  InterbankLoanType   @default(UNSECURED)
+  principal             Decimal             @db.Decimal(18, 2)
+  interestRatePct       Decimal             @db.Decimal(5, 2)
+  termDays              Int
+  startDate             DateTime            @default(now())
+  maturityDate          DateTime
+  collateralDescription String?
+  collateralValue       Decimal?            @db.Decimal(18, 2)
+  status                InterbankLoanStatus @default(ACTIVE)
+  interestReceived      Decimal             @default(0) @db.Decimal(18, 2)
+  settledAt             DateTime?
+  defaultedAt           DateTime?
+  createdById           String
+  createdAt             DateTime            @default(now())
+
+  @@index([counterpartyId, status])
+  @@index([status, maturityDate])
+}
+
+// Singleton row representing LamBank's own lending capital — separate from
+// every customer Account so interbank activity never touches customer
+// money. Lending debits it, settlement credits back principal + interest,
+// a default just leaves the principal gone (a realized credit loss).
+model TreasuryBook {
+  id        String   @id @default(uuid())
+  balance   Decimal  @default(50000000) @db.Decimal(18, 2)
+  updatedAt DateTime @updatedAt
+}
+
+// Ledger of everything that has moved through the TreasuryBook, shown as
+// the "Treasury" tab's transaction history.
+model TreasuryTransaction {
+  id              String          @id @default(uuid())
+  amount          Decimal         @db.Decimal(18, 2)
+  type            TransactionType
+  description     String
+  interbankLoanId String?
+  createdAt       DateTime        @default(now())
+
+  @@index([createdAt])
+}
+
+// --- Alerts ---
+// A company-configured threshold, checked lazily whenever notifications are
+// loaded (same "derive, don't persist" style as the rest of GET /notifications)
+// rather than a background watcher — there's no scheduler in this app.
+enum AlertRuleType {
+  LOW_BALANCE
+  LARGE_TRANSACTION
+}
+
+model AlertRule {
+  id          String        @id @default(uuid())
+  companyId   String
+  // Null = applies to every account on the company; set = just that one.
+  accountId   String?
+  type        AlertRuleType
+  threshold   Decimal       @db.Decimal(18, 2)
+  active      Boolean       @default(true)
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  @@index([companyId, active])
+}
+
+// --- Developer API ---
+// A minimal API-key + webhook surface so the platform has *some* integration
+// story, even though nothing in this demo actually calls out to third
+// parties on its own — "Send test event" is the only thing that performs a
+// real HTTP request, on demand, so the feature is verifiable.
+model ApiKey {
+  id          String    @id @default(uuid())
+  companyId   String
+  label       String
+  // Shown in full only once, at creation — GET requests return a masked
+  // preview instead (see routes/developer.ts).
+  key         String    @unique
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(uuid())
+  companyId   String
+  url         String
+  // Shared secret sent as the X-LamBank-Signature header (HMAC of the
+  // payload) so the receiving end can verify authenticity.
+  secret      String
+  // JSON array of event name strings, e.g. ["TRANSFER_COMPLETED"] — same
+  // "string column holding serialized JSON" convention as Card.blockedCategories.
+  events      String
+  active      Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model WebhookDelivery {
+  id         String   @id @default(uuid())
+  webhookId  String
+  event      String
+  payload    String
+  statusCode Int?
+  success    Boolean
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+}
