@@ -12,7 +12,7 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required (see backend/.env.example)"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required (set it in backend/.env)"),
 
   // Signs every auth token. A weak/default secret in production would let
   // anyone mint a valid token for any company, so the length floor and the
@@ -29,17 +29,17 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsedEnv = envSchema.safeParse(process.env);
 
-if (!parsed.success) {
-  const issues = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
+if (!parsedEnv.success) {
+  const issues = parsedEnv.error.issues.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`).join("\n");
   // Intentionally console.error + exit rather than the pino logger: the
   // logger itself reads LOG_LEVEL from here, so it may not be usable yet.
   console.error(`Invalid environment configuration:\n${issues}`);
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = parsedEnv.data;
 
 // Catches the classic "shipped the example .env to prod" mistake, which the
 // schema above can't express (the placeholder is long enough to pass min()).

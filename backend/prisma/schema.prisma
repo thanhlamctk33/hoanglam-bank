@@ -113,7 +113,7 @@ enum RecurringFrequency {
 // How a Drawdown's principal gets paid back. REVOLVING (the original
 // behavior) has no fixed schedule — the customer repays any amount at any
 // time against the pooled outstanding balance. The other three generate an
-// Installment schedule at drawdown time; see utils/repayment.ts.
+// Installment schedule at drawdown time; see features/lending/repayment/repayment.service.ts.
 enum RepaymentMethod {
   REVOLVING
   AMORTIZING
@@ -216,6 +216,13 @@ model User {
   isStaff      Boolean  @default(false)
   createdAt    DateTime @default(now())
 
+  // Stamped into every JWT this user is issued and re-checked on every
+  // authenticated request. Bumping it invalidates every token already out
+  // there — that's how "sign out everywhere" works, and how a password
+  // change should cut existing sessions once that endpoint exists. Without
+  // this a leaked token stays valid for its full 7 days with no way to stop it.
+  tokenVersion Int      @default(0)
+
   companyId    String
   company      Company  @relation(fields: [companyId], references: [id])
 
@@ -249,7 +256,7 @@ model Account {
   // Deposit interest (Savings/Money Market only, rate from config by
   // AccountType) accrues lazily — whenever the account is loaded, simple
   // interest since this timestamp is posted as a CREDIT Transaction and
-  // this is bumped to now. See utils/interest.ts.
+  // this is bumped to now. See features/banking/interest/interest.service.ts.
   lastInterestAccrualAt DateTime @default(now())
 
   companyId    String
@@ -274,7 +281,7 @@ model Transaction {
   merchant    String?
   date        DateTime          @default(now())
 
-  // Set by utils/fraud.ts when a debit is unusually large versus the
+  // Set by shared/fraud/fraud.service.ts when a debit is unusually large versus the
   // account's recent average — informational only, never blocks the
   // transaction (unlike the velocity check, which does).
   flagged     Boolean  @default(false)
@@ -490,7 +497,7 @@ model CreditApply {
 // A drawdown pulls money out of an APPROVED CreditApply's available credit
 // and deposits it into the company's cash Account (as a CREDIT Transaction),
 // after the company confirms the lending terms (rate/tenor) for this draw
-// and a set of conditions precedent are checked (see utils/credit.ts
+// and a set of conditions precedent are checked (see features/lending/credit/credit.service.ts
 // getDrawdownConditions). `feeAmount` is charged separately (a DEBIT
 // transaction) and netted out of the cash actually received — it's not
 // added to the principal owed. `maturityDate` is snapshotted at drawdown
@@ -508,7 +515,7 @@ model Drawdown {
 
   // Repayment terms for this specific drawdown. REVOLVING (default) keeps
   // the original free-form behavior — no schedule, no auto-deduct. The
-  // others generate an Installment schedule (see utils/repayment.ts) that
+  // others generate an Installment schedule (see features/lending/repayment/repayment.service.ts) that
   // grace-delays the first due date, then bills principal/interest over
   // the remaining term.
   repaymentMethod     RepaymentMethod @default(REVOLVING)
@@ -528,7 +535,7 @@ model Drawdown {
 // One due payment in a Drawdown's Installment schedule (only exists for
 // non-REVOLVING repayment methods). A repayment applies to a company's
 // unpaid installments oldest-first, "waterfall" style: any fee owed first,
-// then interest, then principal — see utils/repayment.ts applyPaymentToDrawdown.
+// then interest, then principal — see features/lending/repayment/repayment.service.ts applyPaymentToDrawdown.
 model Installment {
   id             String            @id @default(uuid())
   drawdownId     String

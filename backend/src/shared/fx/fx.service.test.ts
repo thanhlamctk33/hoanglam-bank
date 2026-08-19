@@ -17,14 +17,14 @@ describe("convertCurrency", () => {
   });
 
   it("round-trips through a third currency without drift", () => {
-    const there = convertCurrency(500, "GBP", "JPY");
-    expect(convertCurrency(there, "JPY", "GBP")).toBeCloseTo(500, 8);
+    const gbpAsJpy = convertCurrency(500, "GBP", "JPY");
+    expect(convertCurrency(gbpAsJpy, "JPY", "GBP")).toBeCloseTo(500, 8);
   });
 
   it("cross-converts two non-USD currencies via USD", () => {
     // 100 EUR -> USD is 100/0.92; that times the GBP rate is the expected result.
-    const expected = (100 / FX_RATES_PER_USD.EUR) * FX_RATES_PER_USD.GBP;
-    expect(convertCurrency(100, "EUR", "GBP")).toBeCloseTo(expected, 10);
+    const expectedGbpAmount = (100 / FX_RATES_PER_USD.EUR) * FX_RATES_PER_USD.GBP;
+    expect(convertCurrency(100, "EUR", "GBP")).toBeCloseTo(expectedGbpAmount, 10);
   });
 
   it("treats an unknown currency code as 1:1 rather than producing NaN", () => {

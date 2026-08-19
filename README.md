@@ -65,7 +65,8 @@ If you'd rather use Docker, a `backend/docker-compose.yml` is included as an alt
 ```bash
 cd backend
 npm install
-cp .env.example .env   # already done; edit if your DB creds differ
+                        # backend/.env holds all config (gitignored) — edit if your DB creds differ.
+                        # src/config/env.ts is the authoritative list of variables and their rules.
 npx prisma migrate dev --name init
 npx tsx prisma/seed.ts
 npm run dev             # http://localhost:4000
@@ -120,7 +121,7 @@ Config lives in `monitoring/` (Loki storage config, Promtail scrape config, Graf
 - Migrations `20260808190000_subscription_plans` and `20260808200000_kyb` add the subscription and KYB fields/tables. Run `npx prisma migrate dev` in `backend/` after pulling this change (existing companies default to the Free plan and NOT_STARTED verification).
 - The Team/roles feature reuses the existing `User.role` column (no new migration) — re-run `npx tsx prisma/seed.ts` to get the new Member demo login if your DB was seeded before this change (it's additive and safe to re-run).
 - Staff no longer use a separate `/dashboard/login` form — it now redirects to `/login`. Any account with `isStaff: true` sees an "Admin console" link in their account menu (top-right avatar) after logging in normally.
-- **`ANTHROPIC_API_KEY` in `backend/.env` is required for both the Assistant chatbot and Claims receipt OCR** — it ships blank in `.env.example`/`.env`. Without it, OCR fails silently in the UI (falls back to manual entry) except when the *company admin* is the one uploading, who'll see "OCR isn't configured yet" instead of a generic message. Get a key from console.anthropic.com and set it, then restart `npm run dev` in `backend/`.
+- **`ANTHROPIC_API_KEY` in `backend/.env` is required for both the Assistant chatbot and Claims receipt OCR** — it ships blank in `.env`. Without it, OCR fails silently in the UI (falls back to manual entry) except when the *company admin* is the one uploading, who'll see "OCR isn't configured yet" instead of a generic message. Get a key from console.anthropic.com and set it, then restart `npm run dev` in `backend/`.
 - The Operation dashboard (bank staff console) moved from `/admin` to `/dashboard`.
 - Migration `20260808210000_credit_lending` adds `Company.contractAcceptedAt` and the `CreditApply` / `Drawdown` / `Repayment` tables. Run `npx prisma migrate dev` in `backend/` after pulling this change, then re-run `npx tsx prisma/seed.ts` — it's additive and safe to re-run, and will backfill Demo Trading Co. with a seeded $50,000 approved credit line (KYB approved, contract signed, $20,000 drawn, $5,000 repaid) plus a second staff login (`checker@lambank.dev`) so maker-checker is testable locally. Existing companies otherwise default to no credit line and no signed contract.
 - Migration `20260808220000_budget_freeze` adds a `FROZEN` value to `BudgetStatus`. Run `npx prisma migrate dev` in `backend/` after pulling this change. Also run `npx prisma generate` (or any `migrate dev`, which does it automatically) any time you pull schema changes — otherwise the backend's TypeScript types go stale.

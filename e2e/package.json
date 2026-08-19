@@ -1,0 +1,22 @@
+{
+  "name": "hoanglam-bank-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests (UI + API) for hoanglam-bank, driven by Playwright.",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=chromium",
+    "test:headed": "playwright test --project=chromium --headed",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen http://localhost:3000",
+    "install:browsers": "playwright install --with-deps chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^20.14.9",
+    "typescript": "^5.5.4"
+  }
+}

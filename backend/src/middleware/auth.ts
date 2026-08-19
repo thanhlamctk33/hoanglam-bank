@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyToken } from "../features/auth/jwt.service";
+import { verifyToken, TokenPayload } from "../features/platform/auth/jwt.service";
+import { findUserTokenVersion } from "../features/platform/auth/auth.repository";
+import { asyncHandler } from "./errorHandler";
 import { UnauthorizedError } from "../errors/AppError";
 
 // userId/companyId are guaranteed present on any request that made it past
@@ -13,20 +15,41 @@ export interface AuthedRequest extends Request {
   companyId: string;
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+/**
+ * Rejects the request unless it carries a valid, still-current token.
+ *
+ * "Still-current" is the part that costs a database read: a signature check
+ * alone can only say the token was genuine when it was minted, never that it
+ * hasn't been revoked since. Comparing the token's tokenVersion against the
+ * user's row is what makes "sign out everywhere" actually cut existing
+ * sessions. It's one lookup on a primary key, and requireStaff /
+ * requireCompanyAdmin already read the same row on the routes that use them.
+ */
+export const requireAuth = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
     return next(new UnauthorizedError("Missing authorization header"));
   }
 
   const token = header.slice("Bearer ".length);
+  let payload: TokenPayload;
   try {
-    const payload = verifyToken(token);
-    const authedReq = req as AuthedRequest;
-    authedReq.userId = payload.userId;
-    authedReq.companyId = payload.companyId;
-    next();
+    payload = verifyToken(token);
   } catch {
-    next(new UnauthorizedError("Invalid or expired token"));
+    return next(new UnauthorizedError("Invalid or expired token"));
   }
-}
+
+  const user = await findUserTokenVersion(payload.userId);
+  if (!user || user.tokenVersion !== payload.tokenVersion) {
+    // Either the account is gone, or the token predates a "sign out
+    // everywhere" (or predates tokenVersion existing at all, which reads as
+    // undefined here). Deliberately worded so it reads as "sign in again"
+    // rather than "something is broken".
+    return next(new UnauthorizedError("Session expired — please sign in again"));
+  }
+
+  const authedReq = req as AuthedRequest;
+  authedReq.userId = payload.userId;
+  authedReq.companyId = payload.companyId;
+  next();
+});

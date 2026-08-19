@@ -37,7 +37,7 @@ export async function flagIfAnomalous(transactionId: string, accountId: string, 
 
   if (recent.length < MIN_TRANSACTIONS_FOR_ANOMALY_BASELINE) return;
 
-  const avg = recent.reduce((sum, t) => sum + Number(t.amount), 0) / recent.length;
+  const avg = recent.reduce((sum, transaction) => sum + Number(transaction.amount), 0) / recent.length;
   if (avg <= 0 || amount <= avg * ANOMALY_MULTIPLIER) return;
 
   await flagTransaction(transactionId, `${(amount / avg).toFixed(1)}x this account's recent average debit (${avg.toFixed(2)})`);
