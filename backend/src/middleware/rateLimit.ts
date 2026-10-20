@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import { env } from "../config/env";
 import { TooManyRequestsError } from "../errors/AppError";
 
 /**
@@ -20,7 +21,7 @@ const handler = (message: string) => (_req: unknown, _res: unknown, next: (err: 
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: env.AUTH_RATE_LIMIT_MAX,
   skipSuccessfulRequests: true,
   standardHeaders: "draft-7",
   legacyHeaders: false,
@@ -35,7 +36,7 @@ export const authLimiter = rateLimit({
  */
 export const publicApiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 120,
+  limit: env.PUBLIC_API_RATE_LIMIT_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   keyGenerator: (req) => req.header("x-api-key") ?? req.ip ?? "unknown",
@@ -49,7 +50,7 @@ export const publicApiLimiter = rateLimit({
  */
 export const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 300,
+  limit: env.GENERAL_RATE_LIMIT_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   handler: handler("Too many requests. Slow down and retry shortly."),

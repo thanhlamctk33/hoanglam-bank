@@ -27,6 +27,20 @@ const envSchema = z.object({
   // isn't set (they return 503 / skip extraction rather than crashing), so
   // it stays optional instead of required.
   ANTHROPIC_API_KEY: z.string().optional(),
+
+  // Rate-limit ceilings (see middleware/rateLimit.ts). The defaults are the
+  // production values and apply whenever these are unset, so leaving them
+  // out changes nothing.
+  //
+  // They exist because the e2e suite deliberately drives ~10 *failed* logins
+  // per pass (wrong password, unknown email, duplicate email, bad OTP …),
+  // which is exactly the AUTH ceiling. Without a way to raise it, a second
+  // run inside the 15-minute window — or a single CI retry — starts handing
+  // back 429s and a dozen auth tests fail for a reason that has nothing to
+  // do with what they assert.
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  GENERAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  PUBLIC_API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -50,6 +64,15 @@ if (env.NODE_ENV === "production" && env.JWT_SECRET === "change-this-dev-secret"
 
 /** True when running the real deployment — used to gate sandbox/demo-only endpoints. */
 export const isProduction = env.NODE_ENV === "production";
+
+// Raising the auth ceiling is a test-environment convenience. In production it
+// widens the brute-force window, so say so loudly rather than failing startup —
+// there are legitimate reasons to tune it, but none that should pass unnoticed.
+if (isProduction && env.AUTH_RATE_LIMIT_MAX > 10) {
+  console.warn(
+    `AUTH_RATE_LIMIT_MAX is ${env.AUTH_RATE_LIMIT_MAX} in production (default 10) — that many failed logins are allowed per IP per 15 minutes.`
+  );
+}
 
 /** Whether AI-backed features (assistant chat, receipt OCR) are usable. */
 export const isAiConfigured = !!env.ANTHROPIC_API_KEY;
