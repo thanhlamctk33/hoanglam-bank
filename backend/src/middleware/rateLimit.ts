@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "../config/env";
 import { TooManyRequestsError } from "../errors/AppError";
 
@@ -32,14 +32,16 @@ export const authLimiter = rateLimit({
  * Public developer API (/api/v1) — authenticated by a long-lived API key
  * rather than a session, so it's the surface most likely to be hammered by a
  * misconfigured integration. Keyed by API key when present so one noisy
- * customer can't exhaust another's quota via a shared IP.
+ * customer can't exhaust another's quota via a shared IP. The IP fallback goes
+ * through ipKeyGenerator so an IPv6 client can't dodge the limit by rotating
+ * addresses within its /64.
  */
 export const publicApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: env.PUBLIC_API_RATE_LIMIT_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req) => req.header("x-api-key") ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.header("x-api-key") ?? ipKeyGenerator(req.ip ?? "unknown"),
   handler: handler("API rate limit exceeded. Slow down and retry shortly."),
 });
 
