@@ -1,4 +1,4 @@
-import { test as setup, expect } from "@playwright/test";
+import { test as setup, expect } from "../fixtures/test";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -16,23 +16,23 @@ import {
  * every other spec run against a hand-made session. The resulting
  * localStorage + cookies are written to .auth/*.json and reused by every UI
  * test, which saves a login round-trip per spec file.
+ *
+ * Both hooks drive the same page objects the specs use — if a locator here
+ * needs changing, the fix lands in pages/login.page.ts and every spec that
+ * touches the gate inherits it.
  */
 
 function ensureAuthDir(file: string) {
   fs.mkdirSync(path.dirname(path.resolve(__dirname, "..", file)), { recursive: true });
 }
 
-setup("authenticate as company customer", async ({ page }) => {
+setup("authenticate as company customer", async ({ page, loginPage }) => {
   ensureAuthDir(STORAGE_STATE_PATH);
 
-  await page.goto("/login");
-  await expect(page.getByRole("heading", { name: /log in to your account/i })).toBeVisible();
-
-  // The demo build pre-fills these; fill() is idempotent and keeps the spec
+  await loginPage.goto();
+  // The demo build pre-fills these; fill() is idempotent and keeps the setup
   // honest if that convenience is ever removed.
-  await page.getByLabel("Email").fill(DEMO_USER.email);
-  await page.getByLabel("Password", { exact: false }).fill(DEMO_USER.password);
-  await page.getByRole("button", { name: /^log in$/i }).click();
+  await loginPage.login(DEMO_USER.email, DEMO_USER.password);
 
   // A customer lands on "/" — the authenticated app shell behind RequireAuth.
   await page.waitForURL((url) => new URL(url).pathname === "/", { timeout: 30_000 });
@@ -41,16 +41,13 @@ setup("authenticate as company customer", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE_PATH });
 });
 
-setup("authenticate as back-office staff", async ({ page }) => {
+setup("authenticate as back-office staff", async ({ page, operatorLoginPage }) => {
   ensureAuthDir(STAFF_STORAGE_STATE_PATH);
 
-  await page.goto("/dashboard/login");
-  await expect(page.getByRole("heading", { name: /operator console/i })).toBeVisible();
-
-  // The operator gate labels its field "Staff email", not "Email".
-  await page.getByLabel(/staff email/i).fill(STAFF_USER.email);
-  await page.getByLabel("Password", { exact: false }).fill(STAFF_USER.password);
-  await page.getByRole("button", { name: /log in/i }).click();
+  // The operator gate labels its field "Staff email", not "Email" — that
+  // difference lives in OperatorLoginPage, not here.
+  await operatorLoginPage.goto();
+  await operatorLoginPage.login(STAFF_USER.email, STAFF_USER.password);
 
   await page.waitForURL(/\/dashboard(?!\/login)/, { timeout: 30_000 });
 

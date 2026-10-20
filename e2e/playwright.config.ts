@@ -13,8 +13,15 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: "./tests",
-  // Money-movement specs mutate shared seeded balances, so a spec never runs
-  // in parallel with itself; independent files still run concurrently.
+  // Files still run concurrently across workers; tests within a file stay in
+  // declaration order. That used to be load-bearing, because every money spec
+  // debited the same seeded account and `before - amount` was a race against
+  // whatever another worker was spending. The API specs now do their
+  // arithmetic inside the worker-scoped `sandbox` fixture (two private
+  // companies each), and the UI specs assert against ledger rows rather than
+  // absolute balances — so this is now about keeping output readable and
+  // keeping the shared spend-policy mutation in approvals.api.spec tidy,
+  // not about correctness.
   fullyParallel: false,
   workers: isCI ? 1 : 2,
   forbidOnly: isCI,
@@ -66,7 +73,21 @@ export default defineConfig({
       // { cookies: [], origins: [] } }) — see tests/ui/auth.spec.ts.
     },
 
-    // 4. Same specs on WebKit/Firefox — off by default, enable with
+    // 4. The back-office Operator Console at /dashboard. Its own project
+    //    because it needs a different session entirely — a staff user, not a
+    //    company customer — and staff specs must never accidentally inherit
+    //    the customer state above.
+    {
+      name: "staff",
+      testDir: "./tests/staff",
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: STAFF_STORAGE_STATE_PATH,
+      },
+    },
+
+    // 5. Same specs on WebKit/Firefox — off by default, enable with
     //    `npx playwright test --project=webkit`.
     {
       name: "webkit",
@@ -89,6 +110,18 @@ export default defineConfig({
           timeout: 120_000,
           stdout: "pipe",
           stderr: "pipe",
+          // The suite drives ~10 failed logins per pass on purpose (wrong
+          // password, duplicate email, bad OTP …), which is exactly the
+          // production AUTH ceiling. Left alone, a re-run inside the same
+          // 15-minute window — or one CI retry — turns those into 429s and
+          // fails a dozen tests for the wrong reason. Only the *ceiling*
+          // moves; the limiter stays mounted and is asserted on in
+          // tests/api/rate-limit.api.spec.ts.
+          env: {
+            ...process.env,
+            AUTH_RATE_LIMIT_MAX: process.env.AUTH_RATE_LIMIT_MAX ?? "1000",
+            GENERAL_RATE_LIMIT_MAX: process.env.GENERAL_RATE_LIMIT_MAX ?? "5000",
+          } as Record<string, string>,
         },
         {
           command: "npm run dev",

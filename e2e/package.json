@@ -12,7 +12,11 @@
     "report": "playwright show-report",
     "codegen": "playwright codegen http://localhost:3000",
     "install:browsers": "playwright install --with-deps chromium",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "preflight": "node scripts/preflight.mjs",
+    "heal": "npm run preflight && playwright test --reporter=list,./reporters/failure-report.reporter.ts",
+    "heal:ui": "npm run preflight && playwright test --project=chromium --reporter=list,./reporters/failure-report.reporter.ts",
+    "heal:api": "npm run preflight && playwright test --project=api --reporter=list,./reporters/failure-report.reporter.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",

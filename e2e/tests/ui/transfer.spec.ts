@@ -1,18 +1,40 @@
 import { test, expect } from "../../fixtures/test";
+import { ApiClient } from "../../utils/api-client";
 import { SECOND_USER } from "../../utils/env";
 import { smallAmount, uniqueSuffix } from "../../utils/data";
 
 /**
  * The money-movement happy path and its guard rails.
  *
- * These specs run signed in via the shared storageState, and use the `api`
- * fixture to read balances directly instead of scraping formatted currency
- * out of the DOM — the assertion is then about the ledger, not the formatter.
+ * These specs run signed in via the shared storageState, so unlike the API
+ * specs they cannot move to an isolated sandbox company — the browser session
+ * belongs to the seeded demo user, and every UI spec shares it.
+ *
+ * They therefore assert against the *ledger* rather than against absolute
+ * balance arithmetic: "a DEBIT of exactly this amount carrying this unique
+ * note exists" is both stronger (it pins the amount to a specific, attributable
+ * row) and immune to another spec spending from the same account on another
+ * worker at the same moment. `before - amount` would be a race.
  */
 
+interface LedgerRow {
+  amount: number | string;
+  type: "DEBIT" | "CREDIT";
+  description: string;
+}
+
+/** The demo account's most recent rows, read over HTTP rather than scraped. */
+async function recentRows(api: ApiClient, accountId: string): Promise<LedgerRow[]> {
+  const { transactions } = await api.get<{ transactions: LedgerRow[] }>(
+    `/accounts/${accountId}/transactions`,
+    { take: 25 }
+  );
+  return transactions;
+}
+
 test.describe("One-off internal transfer", () => {
-  test("moves money and debits the source account", async ({ transferPage, api }) => {
-    const source = await api.firstAccount("USD");
+  test("moves money and debits the source account", async ({ transferPage, adminApi }) => {
+    const source = await adminApi.firstAccount("USD");
     const amount = smallAmount();
     const note = `e2e ${uniqueSuffix()}`;
 
@@ -23,9 +45,11 @@ test.describe("One-off internal transfer", () => {
       note,
     });
 
-    const after = (await api.listAccounts()).find((a) => a.id === source.id);
-    expect(after, "source account still exists after the transfer").toBeTruthy();
-    expect(Number(after!.balance)).toBeCloseTo(Number(source.balance) - amount, 2);
+    const debit = (await recentRows(adminApi, source.id)).find(
+      (row) => row.type === "DEBIT" && (row.description ?? "").includes(note)
+    );
+    expect(debit, "the UI transfer produced a debit row carrying its note").toBeTruthy();
+    expect(Number(debit!.amount)).toBeCloseTo(amount, 2);
   });
 
   test("shows the entered details on the review step before committing", async ({
@@ -49,13 +73,17 @@ test.describe("One-off internal transfer", () => {
     await expect(transferPage.page.getByText(note).first()).toBeVisible();
   });
 
-  test("a wrong OTP is rejected and no money moves", async ({ transferPage, api }) => {
-    const source = await api.firstAccount("USD");
+  test("a wrong OTP is rejected and no money moves", async ({ transferPage, adminApi }) => {
+    const source = await adminApi.firstAccount("USD");
+    // The note is what makes "nothing moved" checkable: if the rejected
+    // attempt had leaked a debit through, it would be the row carrying this.
+    const note = `rejected ${uniqueSuffix()}`;
 
     await transferPage.goto();
     await transferPage.fillInternalForm({
       toAccountNumber: SECOND_USER.accountNumber,
       amount: smallAmount(),
+      note,
     });
     await transferPage.submitForReview();
     await transferPage.confirmReview();
@@ -64,12 +92,14 @@ test.describe("One-off internal transfer", () => {
     await expect(transferPage.otpError()).toContainText(/invalid otp/i);
     await expect(transferPage.successHeading).toBeHidden();
 
-    const after = (await api.listAccounts()).find((a) => a.id === source.id);
-    expect(Number(after!.balance)).toBeCloseTo(Number(source.balance), 2);
+    const leaked = (await recentRows(adminApi, source.id)).filter((row) =>
+      (row.description ?? "").includes(note)
+    );
+    expect(leaked, "a rejected OTP must not write anything to the ledger").toEqual([]);
   });
 
-  test("warns when the amount exceeds the available balance", async ({ transferPage, api }) => {
-    const source = await api.firstAccount("USD");
+  test("warns when the amount exceeds the available balance", async ({ transferPage, adminApi }) => {
+    const source = await adminApi.firstAccount("USD");
 
     await transferPage.goto();
     await transferPage.fillInternalForm({

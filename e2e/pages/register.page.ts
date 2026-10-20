@@ -28,7 +28,9 @@ export class RegisterPage extends BasePage {
     this.nameInput = page.getByLabel(/your name/i);
     this.emailInput = page.getByLabel(/email/i);
     this.phoneInput = page.getByLabel(/phone number/i);
-    this.passwordInput = page.getByLabel(/password/i);
+    // PasswordInput puts a "Show password" button inside the <label>, so a
+    // plain getByLabel("Password") matches both the field and that button.
+    this.passwordInput = page.getByRole("textbox", { name: /^password/i });
     this.continueButton = page.getByRole("button", { name: /^continue$/i });
 
     this.otpInput = page.getByPlaceholder("••••");

@@ -13,6 +13,14 @@ export function uniqueCompanyName(): string {
   return `E2E Co ${uniqueSuffix()}`;
 }
 
+/**
+ * The password every company registered by this suite is created with.
+ * Exported because some routes ask for it again as a confirmation step —
+ * PATCH /cards/:id/status and POST /cards/:id/reveal both re-check it — so a
+ * spec needs the literal, not just a client that is already signed in.
+ */
+export const NEW_COMPANY_PASSWORD = "Password123!";
+
 /** Registration payload matching backend registerSchema (auth.routes.ts). */
 export function newUserPayload(otp: string) {
   return {
@@ -20,7 +28,7 @@ export function newUserPayload(otp: string) {
     name: "E2E Tester",
     email: uniqueEmail(),
     phone: "+1 555 010 0199",
-    password: "Password123!",
+    password: NEW_COMPANY_PASSWORD,
     otp,
   };
 }

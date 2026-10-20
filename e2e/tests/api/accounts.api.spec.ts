@@ -1,27 +1,18 @@
-import { test, expect } from "@playwright/test";
-import { ApiClient, Account } from "../../utils/api-client";
-import { API_BASE_URL, DEMO_OTP, DEMO_USER } from "../../utils/env";
-import { newUserPayload } from "../../utils/data";
+import { test, expect } from "../../fixtures/test";
+import { Account } from "../../utils/api-client";
+import { DEMO_OTP } from "../../utils/env";
 
 /**
  * /api/accounts — the read side of the ledger, plus the tenancy boundary.
- * The isolation test is the important one here: it proves company A can't
- * read or move company B's money by guessing an id.
+ * The isolation tests are the important ones here: they prove company A can't
+ * read or move company B's money by guessing an id. `outsiderApi` is a company
+ * registered fresh for each of those tests, so it shares nothing with the
+ * seeded demo company by construction.
  */
 
-let client: ApiClient;
-
-test.beforeAll(async () => {
-  ({ client } = await ApiClient.login(DEMO_USER));
-});
-
-test.afterAll(async () => {
-  await client.dispose();
-});
-
 test.describe("GET /api/accounts", () => {
-  test("returns the caller's accounts with the expected shape", async () => {
-    const accounts = await client.listAccounts();
+  test("returns the caller's accounts with the expected shape", async ({ adminApi }) => {
+    const accounts = await adminApi.listAccounts();
 
     expect(accounts.length).toBeGreaterThan(0);
     for (const account of accounts) {
@@ -35,16 +26,16 @@ test.describe("GET /api/accounts", () => {
     }
   });
 
-  test("401s without a token", async ({ request }) => {
-    const res = await request.get(`${API_BASE_URL}/accounts`);
+  test("401s without a token", async ({ anonApi }) => {
+    const res = await anonApi.raw().get("/accounts");
     expect(res.status()).toBe(401);
   });
 });
 
 test.describe("GET /api/accounts/:id/transactions", () => {
-  test("paginates and respects the take limit", async () => {
-    const account = await client.firstAccount();
-    const { transactions } = await client.get<{ transactions: unknown[] }>(
+  test("paginates and respects the take limit", async ({ adminApi }) => {
+    const account = await adminApi.firstAccount();
+    const { transactions } = await adminApi.get<{ transactions: unknown[] }>(
       `/accounts/${account.id}/transactions`,
       { take: 5 }
     );
@@ -53,9 +44,9 @@ test.describe("GET /api/accounts/:id/transactions", () => {
     expect(transactions.length).toBeLessThanOrEqual(5);
   });
 
-  test("filters by type", async () => {
-    const account = await client.firstAccount();
-    const { transactions } = await client.get<{ transactions: { type: string }[] }>(
+  test("filters by type", async ({ adminApi }) => {
+    const account = await adminApi.firstAccount();
+    const { transactions } = await adminApi.get<{ transactions: { type: string }[] }>(
       `/accounts/${account.id}/transactions`,
       { take: 25, type: "DEBIT" }
     );
@@ -67,8 +58,8 @@ test.describe("GET /api/accounts/:id/transactions", () => {
 });
 
 test.describe("GET /api/accounts/reports", () => {
-  test("returns a monthly series and category breakdown", async () => {
-    const reports = await client.get<{ series?: unknown[]; categories?: unknown[] }>(
+  test("returns a monthly series and category breakdown", async ({ adminApi }) => {
+    const reports = await adminApi.get<{ series?: unknown[]; categories?: unknown[] }>(
       "/accounts/reports",
       { months: 6 }
     );
@@ -80,42 +71,41 @@ test.describe("GET /api/accounts/reports", () => {
 });
 
 test.describe("Tenancy isolation", () => {
-  test("a fresh company cannot read another company's account", async ({ request }) => {
-    // Arrange: a brand-new company that shares nothing with the demo one.
-    const outsiderRes = await request.post(`${API_BASE_URL}/auth/register`, {
-      data: newUserPayload(DEMO_OTP),
-    });
-    expect(outsiderRes.status()).toBe(201);
-    const outsider = new ApiClient(request, (await outsiderRes.json()).token);
+  test("a fresh company cannot read another company's account", async ({
+    adminApi,
+    outsiderApi,
+  }) => {
+    const victimAccount: Account = await adminApi.firstAccount();
 
-    const victimAccount: Account = await client.firstAccount();
-
-    // Act + assert: the id is valid, but not theirs.
-    const res = await outsider.raw().get(`/accounts/${victimAccount.id}/transactions`);
+    // The id is valid — it just isn't theirs.
+    const res = await outsiderApi.raw().get(`/accounts/${victimAccount.id}/transactions`);
     expect(
       [403, 404].includes(res.status()),
       `expected 403/404 for a cross-tenant read, got ${res.status()}`
     ).toBe(true);
   });
 
-  test("a fresh company cannot transfer out of another company's account", async ({ request }) => {
-    const outsiderRes = await request.post(`${API_BASE_URL}/auth/register`, {
-      data: newUserPayload(DEMO_OTP),
-    });
-    const outsider = new ApiClient(request, (await outsiderRes.json()).token);
+  test("a fresh company cannot transfer out of another company's account", async ({
+    outsiderApi,
+    sandbox,
+  }) => {
+    // The victim is the sandbox payer rather than the seeded company: this
+    // test has to prove the balance did not move, and only an account nothing
+    // else in the suite can touch makes that assertion trustworthy.
+    const { payer, payee } = sandbox;
+    const before = Number(
+      (await payer.api.listAccounts()).find((a) => a.id === payer.account.id)!.balance
+    );
 
-    const victimAccount = await client.firstAccount();
-    const before = Number(victimAccount.balance);
-
-    const res = await outsider.raw().post("/transfers", {
-      fromAccountId: victimAccount.id,
-      toAccountNumber: "US-0002-7734",
+    const res = await outsiderApi.raw().post("/transfers", {
+      fromAccountId: payer.account.id,
+      toAccountNumber: payee.account.accountNumber,
       amount: 1,
       otp: DEMO_OTP,
     });
     expect([403, 404]).toContain(res.status());
 
-    const after = (await client.listAccounts()).find((a) => a.id === victimAccount.id);
+    const after = (await payer.api.listAccounts()).find((a) => a.id === payer.account.id);
     expect(Number(after!.balance)).toBeCloseTo(before, 2);
   });
 });

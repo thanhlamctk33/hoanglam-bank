@@ -13,8 +13,12 @@ export class LoginPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.emailInput = page.getByLabel("Email");
-    this.passwordInput = page.getByLabel("Password", { exact: false });
+    // exact: the "Remember my email on this device" checkbox also has
+    // "email" in its label, so a substring match finds two elements.
+    this.emailInput = page.getByRole("textbox", { name: "Email", exact: true });
+    // PasswordInput puts a "Show password" button inside the <label>, so a
+    // plain getByLabel("Password") matches both the field and that button.
+    this.passwordInput = page.getByRole("textbox", { name: /^password/i });
     this.rememberEmailCheckbox = page.getByLabel(/remember my email/i);
     this.submitButton = page.getByRole("button", { name: /^log in$/i });
     this.createAccountLink = page.getByRole("link", { name: /create one/i });
@@ -47,7 +51,9 @@ export class OperatorLoginPage extends BasePage {
   constructor(page: Page) {
     super(page);
     this.emailInput = page.getByLabel(/staff email/i);
-    this.passwordInput = page.getByLabel("Password", { exact: false });
+    // PasswordInput puts a "Show password" button inside the <label>, so a
+    // plain getByLabel("Password") matches both the field and that button.
+    this.passwordInput = page.getByRole("textbox", { name: /^password/i });
     this.submitButton = page.getByRole("button", { name: /log in/i });
   }
 

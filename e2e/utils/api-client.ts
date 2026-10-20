@@ -1,5 +1,6 @@
 import { APIRequestContext, request } from "@playwright/test";
-import { API_BASE_URL, DEMO_USER } from "./env";
+import { API_BASE_URL, DEMO_OTP, DEMO_USER } from "./env";
+import { newUserPayload } from "./data";
 
 export interface AuthResponse {
   token: string;
@@ -44,6 +45,25 @@ export class ApiClient {
     return { client, auth };
   }
 
+  /**
+   * Registers a brand-new company and returns a client acting as its owner.
+   *
+   * Used by the tenancy specs: the resulting caller is a legitimate, fully
+   * authenticated ADMIN who simply has no business touching the demo
+   * company's data — which is exactly the boundary those specs probe.
+   */
+  static async registerNewCompany(): Promise<{ client: ApiClient; auth: AuthResponse }> {
+    const client = await ApiClient.create();
+    const auth = await client.post<AuthResponse>("/auth/register", newUserPayload(DEMO_OTP));
+    client.setToken(auth.token);
+    return { client, auth };
+  }
+
+  /** A client with no token at all — for "this route must 401" assertions. */
+  static async anonymous(): Promise<ApiClient> {
+    return ApiClient.create();
+  }
+
   setToken(token: string | null) {
     this.token = token;
   }
@@ -75,6 +95,12 @@ export class ApiClient {
     return unwrap<T>(res, "PATCH", path);
   }
 
+  /** The compliance wizards (KYB profile, KYC profile/document) are PUTs. */
+  async put<T>(path: string, data?: unknown): Promise<T> {
+    const res = await this.ctx.put(this.url(path), { headers: this.headers(), data });
+    return unwrap<T>(res, "PUT", path);
+  }
+
   async delete<T>(path: string): Promise<T> {
     const res = await this.ctx.delete(this.url(path), { headers: this.headers() });
     return unwrap<T>(res, "DELETE", path);
@@ -89,6 +115,8 @@ export class ApiClient {
         this.ctx.post(this.url(path), { headers: this.headers(), data }),
       patch: (path: string, data?: unknown) =>
         this.ctx.patch(this.url(path), { headers: this.headers(), data }),
+      put: (path: string, data?: unknown) =>
+        this.ctx.put(this.url(path), { headers: this.headers(), data }),
       delete: (path: string) => this.ctx.delete(this.url(path), { headers: this.headers() }),
     };
   }

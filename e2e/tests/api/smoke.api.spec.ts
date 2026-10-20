@@ -1,6 +1,4 @@
-import { test, expect } from "@playwright/test";
-import { ApiClient } from "../../utils/api-client";
-import { API_BASE_URL, DEMO_USER } from "../../utils/env";
+import { test, expect } from "../../fixtures/test";
 
 /**
  * Breadth-first coverage: every read-only endpoint the app calls on page load
@@ -29,20 +27,10 @@ const READ_ENDPOINTS = [
   "/alerts",
 ];
 
-let client: ApiClient;
-
-test.beforeAll(async () => {
-  ({ client } = await ApiClient.login(DEMO_USER));
-});
-
-test.afterAll(async () => {
-  await client.dispose();
-});
-
 test.describe("Authenticated reads", () => {
   for (const path of READ_ENDPOINTS) {
-    test(`GET ${path} answers 200`, async () => {
-      const res = await client.raw().get(path);
+    test(`GET ${path} answers 200`, async ({ adminApi }) => {
+      const res = await adminApi.raw().get(path);
       expect(
         res.status(),
         `GET ${path} returned ${res.status()}: ${await res.text()}`
@@ -53,16 +41,16 @@ test.describe("Authenticated reads", () => {
 
 test.describe("Anonymous reads", () => {
   for (const path of READ_ENDPOINTS) {
-    test(`GET ${path} answers 401`, async ({ request }) => {
-      const res = await request.get(`${API_BASE_URL}${path}`);
+    test(`GET ${path} answers 401`, async ({ anonApi }) => {
+      const res = await anonApi.raw().get(path);
       expect(res.status(), `GET ${path} is missing requireAuth`).toBe(401);
     });
   }
 });
 
 test.describe("Unknown routes", () => {
-  test("404 with a JSON body, not an HTML error page", async ({ request }) => {
-    const res = await request.get(`${API_BASE_URL}/definitely-not-a-route`);
+  test("404 with a JSON body, not an HTML error page", async ({ anonApi }) => {
+    const res = await anonApi.raw().get("/definitely-not-a-route");
 
     expect(res.status()).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
@@ -70,8 +58,8 @@ test.describe("Unknown routes", () => {
 });
 
 test.describe("Security headers", () => {
-  test("helmet is applied to API responses", async ({ request }) => {
-    const res = await request.get(`${API_BASE_URL}/health`);
+  test("helmet is applied to API responses", async ({ anonApi }) => {
+    const res = await anonApi.raw().get("/health");
     const headers = res.headers();
 
     expect(headers["x-content-type-options"]).toBe("nosniff");

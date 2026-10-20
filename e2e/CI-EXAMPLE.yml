@@ -34,6 +34,12 @@ jobs:
       CORS_ORIGIN: http://localhost:3000
       NEXT_PUBLIC_API_URL: http://localhost:4000/api
       NEXT_PUBLIC_ENABLE_DEMO_TOOLS: "true"
+      # The suite generates ~10 failed logins per pass by design, which is the
+      # production auth ceiling — and `retries: 2` can double that. Raise the
+      # ceiling for CI only; the limiter itself stays on and is asserted in
+      # tests/api/rate-limit.api.spec.ts.
+      AUTH_RATE_LIMIT_MAX: "1000"
+      GENERAL_RATE_LIMIT_MAX: "5000"
 
     steps:
       - uses: actions/checkout@v4

@@ -48,24 +48,68 @@ Key principles:
 
 This suite tests a banking application. A test that fails because the app is
 wrong is the suite doing its job — "make it green" is not the goal, "make it
-tell the truth" is. Therefore:
+tell the truth" is.
+
+### Start here, every time
+
+Run `npm run heal` (not `playwright test`). It does two things the raw command
+does not:
+
+1. **Preflight.** `scripts/preflight.mjs` checks the backend is answering and
+   that all four seeded logins still work. If it fails, STOP — the fix is in
+   the environment (`cd ../backend && npm run seed`), not in any spec. An
+   agent that starts editing tests against an unseeded database will "fix"
+   dozens of correct tests into incorrect ones.
+2. **A classified failure report.** `heal/FAILURES.md` and `heal/failures.json`
+   list every failure with a *kind* — `SETUP`, `LOCATOR`, `TIMEOUT`,
+   `HTTP_STATUS`, `PLAN_LIMIT`, `MONEY`, `ASSERTION` — and the rule that
+   applies to that kind. Read that file first. Do not work from terminal
+   scrollback; it loses the classification, which is the part that decides
+   what a legitimate fix looks like.
+
+Re-run `npm run heal` after each fix; the report is regenerated every run.
+`npm run heal:api` and `npm run heal:ui` narrow it to one project.
+
+### Rules
 
 - **Never weaken a financial assertion to pass a test.** Balance maths, fee
-  calculations, OTP rejection and the tenancy-isolation checks in
-  `tests/api/accounts.api.spec.ts` encode intended behaviour. If one of them
-  fails, the most likely explanation is a real backend bug. Report it; do not
-  relax the expected value, widen a tolerance, or delete the assertion.
+  calculations, OTP rejection, the card spend-limit and budget ceilings, and
+  the tenancy-isolation checks all encode intended behaviour. If one fails,
+  the most likely explanation is a real backend bug. Report it; do not relax
+  the expected value, widen a tolerance, or delete the assertion. Failures
+  classified `MONEY` are exactly these.
 - **Prefer `test.fail()` over `test.fixme()`** when you believe the test is
   correct and the app is broken. `fixme` skips the test and hides the
   regression; `fail` keeps it running and flags it the moment it starts
   passing again. Always leave a comment naming the suspected bug.
-- **Check the environment before blaming the test.** Most failures across the
-  whole suite at once mean the database was never seeded. Run
-  `npm run seed` in `../backend` and retry before editing any spec.
+- **A `PLAN_LIMIT` failure (402) is not a bug in the test's expectation.** The
+  FREE plan allows 3 active cards, 2 active budgets and 5 claims per month. If
+  a spec that is not *about* the cap hits one, it is creating objects in a
+  company that already has some: move it onto the `fundedCompany` fixture,
+  which mints a funded company per test and therefore starts every quota at
+  zero. Never "fix" this by upgrading a company's plan or by lowering what the
+  spec creates below a meaningful number.
+- **A `SETUP` failure is an environment verdict, not a code smell.** The
+  fixtures wrap sign-in in `withSetupHint()`, so the error already names the
+  three things to check. Do those, then re-run.
 - **Locators go through the page objects in `pages/`.** Fix the locator there,
   not inline in the spec, so every spec benefits from one edit.
 - **Keep locators user-facing.** `getByRole` / `getByLabel` / `getByPlaceholder`
   in that order. Do not "fix" a broken locator by reaching for a Tailwind class
-  or an nth-child chain — those break again on the next restyle.
+  or an nth-child chain — those break again on the next restyle. This app ships
+  no `data-testid` attributes on purpose: a locator that can no longer find an
+  element by its accessible name is usually reporting an accessibility
+  regression, and routing around it destroys the signal.
+- **Do not delete a cleanup block.** Several specs create a card, budget,
+  claim or bill and remove it again in a `finally`. That is what keeps the
+  shared demo company under its plan caps across runs. If a cleanup call is
+  failing, fix the call — do not drop it.
+- **Do not make a test mutate shared state to make it pass.** In particular,
+  never approve, reject or forward a real Credit Apply that the suite did not
+  itself create: approving one grants an actual credit line to an actual
+  company. `tests/staff/credit-applies.spec.ts` explains what is deliberately
+  not covered and why; extend it with a fixture that builds its own company,
+  or leave it alone.
 - **Read `README.md` in this folder first.** It documents the seeded accounts,
-  the fixed demo OTP (`8888`), and how the shared auth `storageState` works.
+  the fixed demo OTP (`8888`), the fixture groups, and how the shared auth
+  `storageState` works.

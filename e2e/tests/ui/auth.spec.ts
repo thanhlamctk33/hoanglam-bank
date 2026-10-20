@@ -1,8 +1,6 @@
-import { test, expect, LOGGED_OUT_STATE } from "../../fixtures/test";
-import { RegisterPage } from "../../pages/register.page";
-import { DEMO_USER, STAFF_USER } from "../../utils/env";
+import { test, expect, clearSession, LOGGED_OUT_STATE } from "../../fixtures/test";
+import { DEMO_OTP, DEMO_USER, STAFF_USER } from "../../utils/env";
 import { newUserPayload } from "../../utils/data";
-import { DEMO_OTP } from "../../utils/env";
 
 /**
  * Every test here must start signed out, so the whole file overrides the
@@ -49,7 +47,7 @@ test.describe("Login", () => {
     await page.waitForURL((url) => new URL(url).pathname === "/");
 
     // Clearing the JWT (not the remembered email) sends us back to the gate.
-    await page.evaluate(() => window.localStorage.removeItem("hoanglam-bank-token"));
+    await clearSession(page);
     await loginPage.goto();
 
     await expect(loginPage.emailInput).toHaveValue(DEMO_USER.email);
@@ -64,8 +62,7 @@ test.describe("Login", () => {
 });
 
 test.describe("Registration", () => {
-  test("creates a brand-new company and signs it in", async ({ page }) => {
-    const registerPage = new RegisterPage(page);
+  test("creates a brand-new company and signs it in", async ({ page, registerPage }) => {
     const payload = newUserPayload(DEMO_OTP);
 
     await registerPage.goto();
@@ -78,8 +75,7 @@ test.describe("Registration", () => {
     await expect(page.getByRole("link", { name: /transfer money/i }).first()).toBeVisible();
   });
 
-  test("rejects a duplicate email", async ({ page }) => {
-    const registerPage = new RegisterPage(page);
+  test("rejects a duplicate email", async ({ page, registerPage }) => {
     const payload = newUserPayload(DEMO_OTP);
 
     await registerPage.goto();
@@ -91,8 +87,7 @@ test.describe("Registration", () => {
     await expect(page).toHaveURL(/\/register/);
   });
 
-  test("rejects a wrong OTP", async ({ page }) => {
-    const registerPage = new RegisterPage(page);
+  test("rejects a wrong OTP", async ({ registerPage }) => {
     const payload = newUserPayload(DEMO_OTP);
 
     await registerPage.goto();

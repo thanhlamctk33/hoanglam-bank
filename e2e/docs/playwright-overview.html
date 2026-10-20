@@ -1,0 +1,915 @@
+<title>Playwright trong LamBank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #F5F7F5;
+    --surface: #FFFFFF;
+    --surface-2: #EEF2F0;
+    --ink: #14191A;
+    --ink-2: #4C5658;
+    --ink-3: #78827F;
+    --line: #DBE1DE;
+    --line-strong: #BFC8C4;
+    --accent: #0E6E63;
+    --accent-soft: #E1EEEB;
+    --pass: #2C6B4C;
+    --warn: #86610F;
+    --stop: #9A3A32;
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1213;
+      --surface: #151A1B;
+      --surface-2: #1B2223;
+      --ink: #E7ECE9;
+      --ink-2: #9BA6A3;
+      --ink-3: #77827F;
+      --line: #262F30;
+      --line-strong: #384343;
+      --accent: #52C1B1;
+      --accent-soft: #14302D;
+      --pass: #6FBF8F;
+      --warn: #D3A759;
+      --stop: #E07E71;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0E1213;
+    --surface: #151A1B;
+    --surface-2: #1B2223;
+    --ink: #E7ECE9;
+    --ink-2: #9BA6A3;
+    --ink-3: #77827F;
+    --line: #262F30;
+    --line-strong: #384343;
+    --accent: #52C1B1;
+    --accent-soft: #14302D;
+    --pass: #6FBF8F;
+    --warn: #D3A759;
+    --stop: #E07E71;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 56px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    grid-column: 1 / -1;
+    padding: 56px 0 36px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+
+  h1 {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.02;
+    letter-spacing: -0.015em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 18.5px;
+    color: var(--ink-2);
+    max-width: 64ch;
+    margin: 0;
+  }
+
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 1px;
+    margin-top: 36px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .figure {
+    background: var(--surface);
+    padding: 14px 16px 16px;
+  }
+
+  .figure b {
+    display: block;
+    font-family: var(--cond);
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .figure span {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 4px;
+  }
+
+  /* ---------- rail ---------- */
+
+  nav.rail { display: none; }
+
+  @media (min-width: 1040px) {
+    .shell { grid-template-columns: 208px minmax(0, 1fr); }
+    header.masthead { grid-column: 1 / -1; }
+    nav.rail {
+      display: block;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      padding-top: 52px;
+      max-height: 100vh;
+      overflow-y: auto;
+    }
+    main { padding-top: 8px; }
+  }
+
+  nav.rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    border-left: 1px solid var(--line);
+  }
+
+  nav.rail a {
+    display: block;
+    padding-left: 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    color: var(--ink-3);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    margin-left: -1px;
+  }
+
+  nav.rail a:hover, nav.rail a:focus-visible {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  /* ---------- sections ---------- */
+
+  main { grid-column: 1 / -1; }
+  @media (min-width: 1040px) { main { grid-column: 2 / 3; } }
+
+  section {
+    padding-top: 52px;
+    scroll-margin-top: 20px;
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    margin: 0 0 8px;
+  }
+
+  h2 {
+    font-family: var(--cond);
+    font-weight: 600;
+    font-size: 30px;
+    line-height: 1.14;
+    letter-spacing: -0.008em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 16.5px;
+    letter-spacing: 0.005em;
+    margin: 30px 0 8px;
+  }
+
+  p { max-width: 68ch; margin: 0 0 14px; }
+  p.lead { font-size: 17px; color: var(--ink-2); }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  ul.notes {
+    max-width: 68ch;
+    margin: 0 0 14px;
+    padding-left: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  ul.notes li {
+    padding-left: 20px;
+    position: relative;
+  }
+
+  ul.notes li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  /* ---------- code blocks ---------- */
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.75px;
+    line-height: 1.66;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 16px 18px;
+    margin: 18px 0;
+    overflow-x: auto;
+    tab-size: 2;
+  }
+
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .cmt { color: var(--ink-3); }
+  .kw { color: var(--accent); }
+
+  /* ---------- tables ---------- */
+
+  .table-wrap {
+    overflow-x: auto;
+    margin: 20px 0 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.25px;
+    min-width: 520px;
+  }
+
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--ink); }
+  td.mono, th.num + td, td.num {
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  th.num { text-align: right; }
+  td strong { color: var(--ink); font-weight: 600; }
+
+  caption {
+    caption-side: bottom;
+    text-align: left;
+    font-size: 13px;
+    color: var(--ink-3);
+    padding: 10px 14px 12px;
+  }
+
+  /* ---------- pipeline ---------- */
+
+  .pipeline {
+    display: grid;
+    gap: 14px;
+    margin: 22px 0 6px;
+  }
+
+  @media (min-width: 700px) {
+    .pipeline { grid-template-columns: 1fr 1fr; }
+  }
+
+  .stage {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 16px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .stage.wide { grid-column: 1 / -1; }
+
+  .stage .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .stage .name {
+    font-family: var(--cond);
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  .stage p {
+    margin: 0;
+    font-size: 14.25px;
+    color: var(--ink-2);
+    max-width: none;
+  }
+
+  .stage .dep {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  /* ---------- callouts ---------- */
+
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--warn);
+    background: var(--surface);
+    padding: 15px 18px;
+    margin: 20px 0;
+    max-width: 68ch;
+  }
+
+  .callout .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--warn);
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  .callout p { margin: 0; font-size: 14.75px; color: var(--ink-2); }
+  .callout p + p { margin-top: 9px; }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .pill.ok { color: var(--pass); border-color: var(--pass); }
+  .pill.hot { color: var(--stop); border-color: var(--stop); }
+  .pill.mid { color: var(--warn); border-color: var(--warn); }
+
+  footer {
+    grid-column: 1 / -1;
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line-strong);
+    font-size: 13.5px;
+    color: var(--ink-3);
+    max-width: 68ch;
+  }
+
+  footer p { max-width: none; }
+  footer code { background: none; padding: 0; }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">hoanglam-bank / e2e</p>
+    <h1>Playwright trong LamBank</h1>
+    <p class="standfirst">Bộ kiểm thử end-to-end chạy <strong>thật</strong> cả backend Express lẫn frontend Next.js: một nửa là hợp đồng HTTP không cần trình duyệt, một nửa là đường click thật của người dùng. Tài liệu này giải thích suite được lắp ráp thế nào và vì sao nó được lắp như vậy.</p>
+
+    <div class="figures">
+      <div class="figure"><b>289</b><span>case mỗi lượt chạy</span></div>
+      <div class="figure"><b>23</b><span>file spec</span></div>
+      <div class="figure"><b>5</b><span>project</span></div>
+      <div class="figure"><b>17</b><span>page object</span></div>
+      <div class="figure"><b>9</b><span>fixture</span></div>
+      <div class="figure"><b>0</b><span>data-testid</span></div>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Mục lục">
+    <ol>
+      <li><a href="#tong-quan">01 Tổng quan</a></li>
+      <li><a href="#cau-truc">02 Cấu trúc</a></li>
+      <li><a href="#projects">03 Projects &amp; thứ tự chạy</a></li>
+      <li><a href="#webserver">04 webServer &amp; rate limit</a></li>
+      <li><a href="#fixtures">05 Fixtures</a></li>
+      <li><a href="#sandbox">06 Sandbox tiền</a></li>
+      <li><a href="#page-objects">07 Page objects</a></li>
+      <li><a href="#chien-luoc">08 Chiến lược assert</a></li>
+      <li><a href="#coverage">09 Bản đồ coverage</a></li>
+      <li><a href="#staff-coverage">10 Operator Console</a></li>
+      <li><a href="#chay">11 Cách chạy</a></li>
+      <li><a href="#ci">12 CI</a></li>
+      <li><a href="#heal">13 Tự chữa lành</a></li>
+      <li><a href="#agents">14 Playwright Agents</a></li>
+      <li><a href="#luu-y">15 Điểm cần dọn</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="tong-quan">
+      <p class="kicker">e2e/README.md</p>
+      <h2>Suite này nằm ở tầng nào</h2>
+      <p class="lead">Unit test sống cạnh code nó kiểm (vitest trong <code>backend/</code> và <code>frontend/</code>). Thư mục <code>e2e/</code> là tầng trên đó: nó chỉ nói chuyện với ứng dụng theo đúng cách một người dùng hoặc một API consumer làm — không import module nội bộ, không chọc thẳng vào database.</p>
+      <p>Điều đó chia suite thành hai nửa có tính chất rất khác nhau:</p>
+      <ul class="notes">
+        <li><strong>193 test API</strong> — thuần HTTP, không mở trình duyệt, tự phát hành token. Chúng vẫn chạy được khi giao diện đang hỏng, và là nơi kiểm những thứ UI không chạm tới: phân quyền, ranh giới tenancy, validation, hạn mức gói cước, rate limit.</li>
+        <li><strong>37 test UI khách hàng</strong> — trình duyệt thật, đăng nhập sẵn: đăng nhập, điều hướng, chuyển tiền qua 4 bước, sổ giao dịch, các màn Spend, chuông thông báo và tìm kiếm toàn cục.</li>
+        <li><strong>13 test UI back-office</strong> — phiên nhân viên ngân hàng, chạy trong project <code>staff</code> riêng: Operator Console và ranh giới quyền của nó.</li>
+      </ul>
+      <p>Ba file tham số hoá theo danh sách route (<code>navigation.spec.ts</code>, <code>smoke.api.spec.ts</code>, <code>staff/console.spec.ts</code>), nên số case thực thi cao hơn số khối <code>test(...)</code> viết ra: <strong>289 case</strong> mỗi lượt chạy mặc định, và 336 nếu bật thêm project <code>webkit</code>.</p>
+    </section>
+
+    <section id="cau-truc">
+      <p class="kicker">e2e/</p>
+      <h2>Cấu trúc thư mục</h2>
+<pre><code>e2e/
+├── playwright.config.ts   <span class="cmt">projects, reporter, webServer BE+FE</span>
+├── fixtures/              <span class="cmt">đối tượng `test` mà MỌI spec import</span>
+│   ├── test.ts            <span class="cmt">chỉ là mục lục: gộp ba nhóm dưới bằng mergeTests</span>
+│   ├── roles.ts           <span class="cmt">AI đang gọi (adminApi, memberApi, …)</span>
+│   ├── sandbox.ts         <span class="cmt">TIỀN ở đâu (cặp payer/payee riêng tư)</span>
+│   ├── pages.ts           <span class="cmt">NHÌN màn nào (7 page object)</span>
+│   └── session.ts         <span class="cmt">trình duyệt CÓ đang đăng nhập không</span>
+├── pages/                 <span class="cmt">page object, mỗi màn hình một file</span>
+│   ├── base.page.ts       <span class="cmt">goto/waitUntilReady/waitForApi dùng chung</span>
+│   ├── login.page.ts      <span class="cmt">LoginPage + OperatorLoginPage (cổng staff)</span>
+│   ├── register.page.ts   <span class="cmt">wizard 2 bước: form → OTP</span>
+│   ├── home.page.ts       <span class="cmt">app shell: sidebar, quick actions</span>
+│   ├── accounts.page.ts   <span class="cmt">AccountsPage + TransactionsPage</span>
+│   └── transfer.page.ts   <span class="cmt">máy trạng thái 4 bước của /transfer</span>
+├── tests/
+│   ├── auth.setup.ts      <span class="cmt">đăng nhập 1 lần, ghi session ra .auth/</span>
+│   ├── api/               <span class="cmt">9 file — hợp đồng HTTP</span>
+│   ├── ui/                <span class="cmt">6 file — trình duyệt, đã đăng nhập</span>
+│   └── staff/             <span class="cmt">3 file — Operator Console, phiên nhân viên</span>
+├── reporters/             <span class="cmt">báo cáo thất bại có phân loại cho vòng chữa lành</span>
+├── scripts/preflight.mjs  <span class="cmt">kiểm tra môi trường trước khi chữa</span>
+└── utils/
+    ├── env.ts             <span class="cmt">mọi host, credential, hằng số ma thuật</span>
+    ├── api-client.ts      <span class="cmt">wrapper HTTP giữ JWT + tiền tố /api</span>
+    └── data.ts            <span class="cmt">sinh dữ liệu duy nhất mỗi lần chạy</span></code></pre>
+      <p>Không có hằng số nào rải rác trong spec: URL, mật khẩu demo, OTP <code>8888</code>, khoá localStorage của JWT đều nằm trong <code>utils/env.ts</code> và đều override được bằng biến môi trường — nên cùng một suite chạy được với <code>npm run dev</code> ở máy hay với một stack đã deploy.</p>
+    </section>
+
+    <section id="projects">
+      <p class="kicker">playwright.config.ts → projects</p>
+      <h2>Năm project và thứ tự chạy</h2>
+      <p class="lead">Mỗi project trả lời một câu hỏi khác nhau, nên chúng có testDir, storageState và cả baseURL riêng.</p>
+
+      <div class="pipeline">
+        <div class="stage wide">
+          <span class="tag">01 · độc lập</span>
+          <span class="name">api</span>
+          <p><code>tests/api</code>, baseURL trỏ thẳng backend. Không trình duyệt, không phụ thuộc <code>setup</code> — tự đăng nhập lấy token. Đây là project chạy nhanh nhất và là thứ duy nhất còn dùng được khi frontend đang hỏng.</p>
+        </div>
+        <div class="stage wide">
+          <span class="tag">02 · điều kiện tiên quyết</span>
+          <span class="name">setup</span>
+          <p>Khớp <code>*.setup.ts</code>. Đăng nhập qua <em>form thật</em> (không tiêm token) rồi ghi localStorage + cookie ra <code>.auth/user.json</code> và <code>.auth/staff.json</code>. Vì đi qua form thật nên lỗi ở luồng đăng nhập nổ ngay tại đây, thay vì âm thầm để cả suite chạy trên một session tự chế.</p>
+        </div>
+        <div class="stage">
+          <span class="tag">03 · UI khách hàng</span>
+          <span class="name">chromium</span>
+          <p><code>tests/ui</code>, khởi động với session của công ty demo. Spec nào cần trạng thái đăng xuất thì tự opt-out bằng <code>test.use({ storageState: LOGGED_OUT_STATE })</code>.</p>
+          <span class="dep">dependencies: ["setup"]</span>
+        </div>
+        <div class="stage">
+          <span class="tag">04 · UI back-office</span>
+          <span class="name">staff</span>
+          <p><code>tests/staff</code>, dùng <code>.auth/staff.json</code>. Tách project riêng vì Operator Console cần một danh tính hoàn toàn khác — nhân viên ngân hàng, không phải khách hàng — và không được vô tình thừa kế session khách hàng.</p>
+          <span class="dep">dependencies: ["setup"]</span>
+        </div>
+        <div class="stage wide">
+          <span class="tag">05 · tuỳ chọn</span>
+          <span class="name">webkit</span>
+          <p>Chính các spec UI đó trên WebKit. Không nằm trong lần chạy mặc định; bật bằng <code>npx playwright test --project=webkit</code>.</p>
+          <span class="dep">dependencies: ["setup"]</span>
+        </div>
+      </div>
+
+      <h3>Vì sao <code>fullyParallel</code> đang tắt</h3>
+      <p>Trước đây nó tắt vì lý do đúng đắn: mọi spec về tiền đều trừ vào cùng một tài khoản seed, nên <code>before − amount</code> là một cuộc đua với worker khác. Lý do đó không còn — số học về số dư đã chuyển vào fixture <code>sandbox</code>, còn spec UI assert theo dòng sổ cái thay vì số dư tuyệt đối. Hiện nó tắt để log dễ đọc và để giữ gọn phần mutate spend-policy dùng chung trong <code>approvals.api.spec.ts</code>. Các file vẫn chạy song song trên <span class="pill">2 worker</span> ở máy, <span class="pill">1 worker</span> trên CI.</p>
+    </section>
+
+    <section id="webserver">
+      <p class="kicker">playwright.config.ts → webServer</p>
+      <h2>Tự dựng server, và một ngoại lệ về rate limit</h2>
+      <p>Playwright tự chạy <code>npm run dev</code> cho cả <code>backend/</code> lẫn <code>frontend/</code>, chờ <code>/api/health</code> và Next.js trả lời rồi mới chạy test đầu tiên. Nếu bạn đã tự bật hai server, đặt <code>E2E_NO_SERVER=1</code> để bỏ qua bước này.</p>
+      <div class="callout">
+        <span class="label">Bẫy thường gặp</span>
+        <p>Khi tự khởi động backend, config truyền thêm <code>AUTH_RATE_LIMIT_MAX=1000</code> và <code>GENERAL_RATE_LIMIT_MAX=5000</code>. Lý do: suite cố tình tạo khoảng <strong>10 lần đăng nhập thất bại</strong> mỗi lượt (sai mật khẩu, email trùng, OTP sai…) — đúng bằng trần production là 10 lần / IP / 15 phút. Không nâng trần thì lần chạy lại trong cùng cửa sổ đó, hoặc chỉ một lần retry của CI, sẽ biến hàng chục test thành 429 vì lý do chẳng liên quan gì đến thứ chúng assert.</p>
+        <p>Chỉ cái <em>trần</em> được nâng; limiter vẫn được mount và vẫn bị assert trong <code>rate-limit.api.spec.ts</code>. <strong>Nếu bạn chạy backend bằng tay với <code>E2E_NO_SERVER=1</code>, nhớ export hai biến này</strong> — không thì lần chạy thứ hai sẽ flaky.</p>
+      </div>
+    </section>
+
+    <section id="fixtures">
+      <p class="kicker">fixtures/test.ts</p>
+      <h2>Fixture được đặt tên theo <em>ai</em> đang gọi</h2>
+      <p class="lead">Trong ứng dụng này gần như mọi assertion thú vị đều là về phân quyền. Đọc <code>memberApi.raw().get("/approvals")</code> là hiểu ngay ý đồ của test, không phải cuộn lên xem <code>client</code> đã đăng nhập bằng ai.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Fixture</th><th>Là ai</th><th>Dùng để chứng minh</th><th>Scope</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">adminApi</td><td>ADMIN của công ty seed</td><td>Đường đi đúng, mặc định cho mọi thứ "phải chạy được"</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">adminAuth</td><td>Response <code>/auth/login</code> thô</td><td>Spec cần id/token chứ không cần client</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">memberApi</td><td>MEMBER cùng công ty</td><td>Vai <em>maker</em>: không có quyền duyệt, thứ họ tạo rơi vào hàng chờ</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">staffApi</td><td>Nhân viên back-office (<code>isStaff</code>)</td><td>Quyền giám sát xuyên công ty ở <code>/dashboard</code></td><td class="mono">worker</td></tr>
+            <tr><td class="mono">checkerApi</td><td>Nhân viên thứ hai</td><td>Credit Apply là maker/checker giữa <em>hai</em> người — tự duyệt bị chặn</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">outsiderApi</td><td>Công ty đăng ký mới cho riêng test đó</td><td>Ranh giới tenancy: một caller hợp lệ nhưng không có phận sự</td><td class="mono">test</td></tr>
+            <tr><td class="mono">anonApi</td><td>Không token</td><td>"Route này phải trả 401"</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">sandbox</td><td>Hai công ty riêng tư (payer + payee)</td><td>Mọi phép tính trên số dư — xem mục kế</td><td class="mono">worker</td></tr>
+            <tr><td class="mono">fundedCompany</td><td>Một công ty đã nạp tiền, tạo mới <em>cho từng test</em></td><td>Mọi thứ <em>tạo ra</em> thẻ/budget/claim — hạn mức gói cước bắt đầu lại từ 0</td><td class="mono">test</td></tr>
+          </tbody>
+          <caption>Mỗi fixture đều lazy: spec không nhắc tới <code>staffApi</code> thì không có lần đăng nhập staff nào xảy ra.</caption>
+        </table>
+      </div>
+
+      <p><strong>Vì sao worker-scoped.</strong> Bốn vai cố định đăng nhập một lần cho cả worker thay vì một lần mỗi test: nhanh hơn, nhẹ tải cho auth limiter, và — quan trọng — dùng được trong <code>test.beforeAll</code>, thứ Playwright chỉ cho phép với worker fixture. Riêng <code>outsiderApi</code> cố tình test-scoped: "một công ty chưa từng thấy dữ liệu này" chỉ đúng nếu nó được tạo mới cho từng test.</p>
+
+      <p><strong>Không spec nào tự đăng nhập.</strong> Mọi spec import <code>test</code>/<code>expect</code> từ <code>fixtures/test</code>, không bao giờ từ <code>@playwright/test</code> — đó là chỗ nối page object và API client vào. Nếu bạn thấy mình đang viết <code>beforeAll(... login ...)</code>, gần như chắc chắn fixture bạn cần đã tồn tại.</p>
+
+      <h3>Mỗi file trả lời đúng một câu hỏi</h3>
+      <p><code>fixtures/test.ts</code> giờ chỉ còn là <em>mục lục</em>: nó gộp ba nhóm bằng <code>mergeTests</code> rồi re-export. Lý do tồn tại của một fixture nằm ngay cạnh fixture đó, thay vì dồn hết vào một đoạn mở đầu dài.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Trả lời</th><th>Chứa</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">roles.ts</td><td>Ai đang gọi</td><td><code>adminApi</code>, <code>adminAuth</code>, <code>memberApi</code>, <code>staffApi</code>, <code>checkerApi</code>, <code>outsiderApi</code>, <code>anonApi</code></td></tr>
+            <tr><td class="mono">sandbox.ts</td><td>Tiền ở đâu</td><td><code>sandbox</code></td></tr>
+            <tr><td class="mono">pages.ts</td><td>Đang nhìn màn nào</td><td>7 page object, mỗi cái một dòng chú thích route</td></tr>
+            <tr><td class="mono">session.ts</td><td>Trình duyệt có đang đăng nhập không</td><td><code>LOGGED_OUT_STATE</code>, <code>clearSession()</code></td></tr>
+          </tbody>
+          <caption>Không có gì trong spec phải đổi: vẫn <code>import { test, expect } from "../../fixtures/test"</code>, và mọi fixture giữ nguyên tên.</caption>
+        </table>
+      </div>
+
+      <h3>Đăng nhập hỏng thì báo luôn phải sửa gì</h3>
+      <p>Fixture hỏng vì hai lý do buồn tẻ nhiều hơn hẳn vì một lý do thú vị: backend chưa chạy, hoặc database chưa seed. Mọi lần đăng nhập nay đi qua <code>withSetupHint()</code>, nên thay vì một dòng <code>POST /auth/login → 401</code> giữa màn hình đỏ, bạn nhận được:</p>
+<pre><code>Could not build the <span class="cmt">"memberApi"</span> fixture.
+
+Check, in order:
+  1. Is the backend answering at http://localhost:4000/api ?
+  2. Has the database been seeded?   cd ../backend &amp;&amp; npm run seed
+  3. Do the credentials in utils/env.ts still match the seed?
+
+Original error: POST /auth/login → 401 Unauthorized</code></pre>
+    </section>
+
+    <section id="sandbox">
+      <p class="kicker">fixtures/test.ts → sandbox</p>
+      <h2>Một thế giới riêng cho tiền</h2>
+      <p class="lead">Bất cứ assertion nào đụng số dư đều chạy trong <code>sandbox</code>: hai công ty vừa đăng ký — một <code>payer</code> đã được nạp <span class="pill">50.000 USD</span> và một <code>payee</code> rỗng — mà không phần nào khác của suite nhìn thấy.</p>
+      <p>Nhờ vậy <code>before − amount</code> là chính xác chứ không phải một cuộc đua với worker đang tiêu cùng khoản tiền đó. Ngữ nghĩa xuyên công ty vẫn được giữ nguyên: payer và payee thật sự là hai tenant khác nhau, đúng như một giao dịch chuyển tiền cần thế.</p>
+<pre><code><span class="kw">test</span>(<span class="cmt">"debits the source account by exactly the amount sent"</span>, <span class="kw">async</span> ({ sandbox }) => {
+  <span class="cmt">// arrange: đọc số dư sống, không dùng snapshot lúc khởi tạo fixture</span>
+  <span class="kw">const</span> before = <span class="kw">await</span> balanceOf(sandbox.payer.api, sandbox.payer.account.id);
+  ...
+});</code></pre>
+      <p><code>account.balance</code> trong fixture chỉ là con số mở đầu chụp lúc worker khởi động — luôn đọc lại số dư sống giữa spec thay vì làm toán trên snapshot đó. Dùng <code>adminApi</code> chỉ khi spec thật sự nói về lịch sử của công ty seed.</p>
+      <p>Các spec thanh toán còn giữ số tiền dưới <span class="pill">1.000 USD</span> có chủ đích: đó là <code>UNVERIFIED_TRANSACTION_LIMIT</code> trong <code>kyb.config.ts</code>, vượt qua ngưỡng đó thì cổng KYB nhảy vào và spec sẽ đang kiểm hai luật cùng lúc.</p>
+    </section>
+
+    <section id="page-objects">
+      <p class="kicker">pages/</p>
+      <h2>Page object, và luật chọn selector</h2>
+      <p class="lead">Ứng dụng <strong>không có một thuộc tính <code>data-testid</code> nào</strong>. Page object định vị phần tử đúng theo cách một trình đọc màn hình làm: <code>getByRole</code>, <code>getByLabel</code>, <code>getByPlaceholder</code> — theo đúng thứ tự ưu tiên đó.</p>
+      <p>Hệ quả rất đáng giá: một locator gãy thường là dấu hiệu của <em>hồi quy về accessibility</em>, chứ không đơn thuần là ai đó đổi tên class. Và cách sửa duy nhất được chấp nhận là sửa trong <code>pages/</code>, không phải vá inline trong spec.</p>
+
+      <h3><code>BasePage</code> cho mỗi màn hình hai thứ</h3>
+      <ul class="notes">
+        <li><code>waitUntilReady()</code> — mỗi page override để chặn ở đúng phần tử chứng minh trang đã tải xong. <code>TransferPage</code> chẳng hạn còn chờ <code>&lt;option&gt;</code> đầu tiên của bộ chọn tài khoản được gắn vào, vì nó do <code>GET /accounts</code> đổ dữ liệu — thiếu bước này thì <code>fill()</code> đầu tiên có thể chạy trước khi có option nào.</li>
+        <li><code>waitForApi(path, method)</code> — chờ đúng lời gọi backend hoàn tất. Đáng tin hơn hẳn một timeout cứng khi một cú click kích hoạt fetch rồi vẽ lại trang.</li>
+      </ul>
+
+      <p><code>TransferPage</code> là ví dụ rõ nhất: màn <code>/transfer</code> là máy trạng thái bốn bước — <em>form → review → OTP → success</em> — được render bằng cách hoán panel chứ không điều hướng. Mỗi bước trong page object chờ chính tiêu đề panel của nó, nên một API call chậm không thể khiến bước sau click vào nút chưa mount.</p>
+    </section>
+
+    <section id="chien-luoc">
+      <p class="kicker">tests/ui/transfer.spec.ts</p>
+      <h2>Sắp đặt qua HTTP, khẳng định qua giao diện</h2>
+      <p class="lead">Fixture trao cho spec một <code>ApiClient</code> đã xác thực, nên phần chuẩn bị ("tôi có account id nào?") và phần kiểm chứng ("tiền có thật sự chuyển không?") đi thẳng vào backend, còn <em>hành vi đang được kiểm</em> vẫn là một đường click thật.</p>
+<pre><code><span class="kw">import</span> { test, expect } <span class="kw">from</span> <span class="cmt">"../../fixtures/test"</span>;
+
+<span class="kw">test</span>(<span class="cmt">"moves money and debits the source account"</span>, <span class="kw">async</span> ({ transferPage, adminApi }) => {
+  <span class="kw">const</span> source = <span class="kw">await</span> adminApi.firstAccount(<span class="cmt">"USD"</span>);   <span class="cmt">// arrange qua HTTP</span>
+  <span class="kw">const</span> note   = <span class="cmt">`e2e ${uniqueSuffix()}`</span>;
+
+  <span class="kw">await</span> transferPage.goto();                            <span class="cmt">// act qua UI</span>
+  <span class="kw">await</span> transferPage.completeInternalTransfer({ toAccountNumber, amount, note });
+
+  <span class="kw">const</span> debit = (<span class="kw">await</span> recentRows(adminApi, source.id))    <span class="cmt">// assert qua HTTP</span>
+    .find((row) => row.type === <span class="cmt">"DEBIT"</span> &amp;&amp; row.description.includes(note));
+  expect(debit).toBeTruthy();
+});</code></pre>
+
+      <h3>Vì sao spec UI assert theo dòng sổ cái, không theo số dư</h3>
+      <p>Spec UI dùng chung session trình duyệt lấy từ <code>.auth/user.json</code>, nên chúng <em>không thể</em> lui về công ty sandbox — phiên đó thuộc về người dùng demo. Thay vì làm toán trên số dư tuyệt đối, chúng khẳng định: <em>"tồn tại một dòng DEBIT đúng bằng số tiền này, mang đúng ghi chú duy nhất này"</em>.</p>
+      <p>Khẳng định đó vừa <strong>mạnh hơn</strong> (nó ghim số tiền vào một dòng cụ thể, quy được trách nhiệm) vừa <strong>miễn nhiễm với chạy song song</strong> — trong khi <code>before − amount</code> chỉ là một cuộc đua.</p>
+
+      <h3>Hình dạng của một spec phủ định</h3>
+      <p>Với mọi đường trừ tiền, khuôn mẫu là: chứng minh đường đi đúng chuyển <em>chính xác</em> số tiền, rồi chứng minh mọi đường từ chối để số dư <em>nguyên vẹn</em>. Như comment trong <code>payments.api.spec.ts</code> nói thẳng: một lỗi 400 mà vẫn trừ tiền còn tệ hơn một lỗi 500 mà không trừ.</p>
+    </section>
+
+    <section id="coverage">
+      <p class="kicker">tests/</p>
+      <h2>Bản đồ coverage</h2>
+
+      <h3>API — 121 khối test</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>File</th><th class="num">Test</th><th>Chứng minh điều gì</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">kyb.api.spec.ts</td><td class="num">28</td><td>Wizard xác minh doanh nghiệp: hồ sơ, chủ sở hữu hưởng lợi, tài liệu; validation; khoá chỉnh sửa sau khi duyệt; trần giao dịch khi chưa xác minh (bao gồm cả biên: đúng ngưỡng thì qua, thêm một cent thì không)</td></tr>
+            <tr><td class="mono">payments.api.spec.ts</td><td class="num">22</td><td>Thanh toán hoá đơn tiện ích và QR Pay: trừ đúng, chiết khấu theo gói, mã QR sai định dạng, tự chuyển cho chính mình, tài khoản không thuộc quyền</td></tr>
+            <tr><td class="mono">kyc.api.spec.ts</td><td class="num">19</td><td>Danh tính cá nhân: KYC là <em>của từng người</em>, không phải của công ty — duyệt admin không đụng tới đồng nghiệp MEMBER</td></tr>
+            <tr><td class="mono">approvals.api.spec.ts</td><td class="num">15</td><td>Maker/checker: MEMBER tạo yêu cầu, ADMIN duyệt; quyết định không replay được; admin ngoài công ty không thấy và không duyệt được hàng chờ</td></tr>
+            <tr><td class="mono">auth.api.spec.ts</td><td class="num">12</td><td>Đăng nhập/đăng ký/<code>/me</code>: mật khẩu sai và email lạ trả cùng một 401 chung chung; token giả bị từ chối</td></tr>
+            <tr><td class="mono">transfers.api.spec.ts</td><td class="num">11</td><td>Chuyển nội bộ, FX (có phí), QR payload thay cho số tài khoản, lịch chuyển định kỳ</td></tr>
+            <tr><td class="mono">accounts.api.spec.ts</td><td class="num">7</td><td>Danh sách tài khoản, phân trang/lọc sổ giao dịch, báo cáo, và <strong>cách ly tenancy</strong></td></tr>
+            <tr><td class="mono">smoke.api.spec.ts</td><td class="num">4</td><td>15 endpoint đọc × 2 (200 khi có token, 401 khi không) + 404 dạng JSON + header helmet — cách rẻ nhất để bắt route bị đổi tên hay quên <code>requireAuth</code></td></tr>
+            <tr><td class="mono">cards.api.spec.ts</td><td class="num">19</td><td>Phát hành thẻ, đóng băng (phải nhập lại mật khẩu), card controls, và <strong>mạng thẻ giả lập</strong>: kênh tắt → 403, danh mục bị chặn → 403, vượt hạn mức → 422 và không tiêu một đồng nào</td></tr>
+            <tr><td class="mono">budgets.api.spec.ts</td><td class="num">15</td><td>Không được lập budget vượt tiền mặt thật có; tổng hạn mức các thẻ gán vào không được vượt budget (biên là <em>bao gồm</em>); đóng băng chặn gán thẻ mới; budget còn thẻ thì không xoá được</td></tr>
+            <tr><td class="mono">bills.api.spec.ts</td><td class="num">14</td><td>Trả hoá đơn là đường trừ tiền thật: trừ đúng số, ghi dòng sổ mang tên nhà cung cấp; trả hai lần, thiếu tài khoản, thiếu số dư, sai tiền tệ, và trần KYB — mọi lần từ chối đều để số dư nguyên vẹn</td></tr>
+            <tr><td class="mono">claims.api.spec.ts</td><td class="num">13</td><td>Ai cũng nộp được, chỉ admin duyệt; nộp hàng loạt và duyệt cả lô; trần 5 claim/tháng của gói FREE</td></tr>
+            <tr><td class="mono">categories.api.spec.ts</td><td class="num">11</td><td>Danh mục merchant: ai cũng đọc, chỉ admin ghi; trùng tên là 409 chứ không tạo dòng thứ hai; reset về danh sách khởi đầu</td></tr>
+            <tr><td class="mono">rate-limit.api.spec.ts</td><td class="num">3</td><td>Limiter vẫn được mount: header đếm đúng, <code>/health</code> nằm ngoài, bucket auth tách khỏi bucket chung</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>UI — 24 khối test</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>File</th><th class="num">Test</th><th>Chứng minh điều gì</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">auth.spec.ts</td><td class="num">9</td><td>Chạy ở trạng thái đăng xuất: đăng nhập, sai mật khẩu, tài khoản staff bị từ chối ở cổng khách hàng, khách vãng lai bị đá khỏi trang cần quyền, nhớ email qua reload, và cả wizard đăng ký</td></tr>
+            <tr><td class="mono">transfer.spec.ts</td><td class="num">8</td><td>Toàn bộ 4 bước chuyển tiền; OTP sai thì không đồng nào nhúc nhích; cảnh báo vượt số dư; nút Back trả về form còn nguyên; đổi tab sang FX/wire/QR</td></tr>
+            <tr><td class="mono">navigation.spec.ts</td><td class="num">4</td><td>11 route chính render đúng <code>&lt;h1&gt;</code> của mình chứ không phải error boundary; sidebar và quick action dẫn đúng nơi; token bị xoá thì bị đưa về <code>/login</code></td></tr>
+            <tr><td class="mono">accounts.spec.ts</td><td class="num">3</td><td>Trang liệt kê đúng mọi tài khoản API trả về, định dạng tiền tệ, và một giao dịch vừa tạo xuất hiện trong sổ kèm ghi chú</td></tr>
+            <tr><td class="mono">spend.spec.ts</td><td class="num">7</td><td>Thẻ/budget/claim/bill vừa tạo qua HTTP phải hiện lên đúng màn; nhãn nút chính <em>là</em> quyền hạn ("Issue new card" cho Admin, "Request new card" cho Member). Mọi thứ tạo ra đều được xoá trong <code>finally</code></td></tr>
+            <tr><td class="mono">shell.spec.ts</td><td class="num">6</td><td>Tìm kiếm toàn cục tìm ra claim vừa nộp từ một trang khác, và <em>không</em> tìm ra claim của công ty khác; chuông thông báo mở panel và nêu hoá đơn sắp đến hạn</td></tr>
+          </tbody>
+          <caption><code>navigation.spec.ts</code> lặp trên 11 route và <code>smoke.api.spec.ts</code> lặp trên 15 endpoint, nên số case thực thi lần lượt là 14 và 32.</caption>
+        </table>
+      </div>
+    </section>
+
+    <section id="staff-coverage">
+      <p class="kicker">tests/staff/</p>
+      <h2>Operator Console — 13 khối test</h2>
+      <p class="lead">Project <code>staff</code> nạp <code>.auth/staff.json</code> thay vì phiên khách hàng, nên các assertion ở đây vừa nói về màn hình vừa nói về ranh giới phiên.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th class="num">Test</th><th>Chứng minh điều gì</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">console.spec.ts</td><td class="num">5</td><td>5 khu vực console render đúng <code>&lt;h1&gt;</code> của mình và không ném lỗi; sidebar tới được tất cả; khách vãng lai bị đưa về cổng staff; và cổng staff <em>từ chối</em> một tài khoản khách hàng hợp lệ</td></tr>
+            <tr><td class="mono">customers.spec.ts</td><td class="num">4</td><td>Danh sách công ty trên màn khớp với <code>GET /admin/customers</code> — sẽ bắt được lỗi console âm thầm chỉ hiện công ty của chính nhân viên đó; ba hàng chờ duyệt mở đúng trang con</td></tr>
+            <tr><td class="mono">credit-applies.spec.ts</td><td class="num">6</td><td>Trang render, và ranh giới quyền: admin công ty bị 403, ẩn danh 401, id không tồn tại 404</td></tr>
+          </tbody>
+          <caption>Vì sao chưa có test maker/checker đầy đủ: xem phần đầu <code>credit-applies.spec.ts</code> — dựng đúng trạng thái <code>PENDING_CHECKER</code> cần KYB + hợp đồng, và một test đoán sai có thể <em>thật sự cấp hạn mức tín dụng</em> cho một công ty thật. Đó là cái giá quá đắt cho một assertion.</caption>
+        </table>
+      </div>
+    </section>
+
+    <section id="chay">
+      <p class="kicker">e2e/package.json</p>
+      <h2>Cách chạy</h2>
+
+      <h3>Điều kiện tiên quyết</h3>
+      <ul class="notes">
+        <li>Postgres đang chạy, <code>backend/.env</code> trỏ đúng vào nó.</li>
+        <li><strong>Database đã được seed</strong> — spec giả định các user demo tồn tại: <code>cd backend &amp;&amp; npm run seed</code>. Hầu như mọi lần "cả suite đỏ rực" đều là do quên bước này.</li>
+        <li><code>frontend/.env.local</code> có <code>NEXT_PUBLIC_ENABLE_DEMO_TOOLS=true</code> — đó là thứ làm OTP cố định <code>8888</code> dùng được.</li>
+      </ul>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tài khoản seed</th><th>Email</th><th>Mật khẩu</th><th>Vai</th></tr></thead>
+          <tbody>
+            <tr><td>Chủ công ty (chính)</td><td class="mono">demo@lambank.dev</td><td class="mono">password123</td><td>ADMIN</td></tr>
+            <tr><td>Đồng nghiệp cùng công ty</td><td class="mono">member@lambank.dev</td><td class="mono">password123</td><td>MEMBER</td></tr>
+            <tr><td>Khách hàng thứ hai</td><td class="mono">hoa@lambank.dev</td><td class="mono">password123</td><td>ADMIN</td></tr>
+            <tr><td>Nhân viên — maker</td><td class="mono">admin@lambank.dev</td><td class="mono">staff123</td><td>staff</td></tr>
+            <tr><td>Nhân viên — checker</td><td class="mono">checker@lambank.dev</td><td class="mono">staff123</td><td>staff</td></tr>
+          </tbody>
+          <caption>Hai tài khoản staff dùng mật khẩu <code>staff123</code>, không phải <code>password123</code> như phía khách hàng.</caption>
+        </table>
+      </div>
+
+      <h3>Lệnh</h3>
+<pre><code>cd e2e
+npm install
+npm run install:browsers   <span class="cmt"># tải Chromium</span>
+
+npm test                   <span class="cmt"># tất cả: api + setup + chromium</span>
+npm run test:api           <span class="cmt"># chỉ HTTP — nhanh nhất, không cần trình duyệt</span>
+npm run test:ui            <span class="cmt"># chỉ spec trình duyệt</span>
+npm run test:headed        <span class="cmt"># xem nó chạy tận mắt</span>
+npm run test:debug         <span class="cmt"># bước từng bước với Playwright Inspector</span>
+npm run report             <span class="cmt"># mở HTML report gần nhất</span>
+npm run codegen            <span class="cmt"># ghi lại thao tác thành code</span>
+npm run typecheck          <span class="cmt"># tsc --noEmit</span>
+
+E2E_NO_SERVER=1 npm test   <span class="cmt"># khi BE/FE đã tự chạy sẵn</span></code></pre>
+
+      <p>Trace, screenshot và video chỉ được giữ khi thất bại (<code>trace: "on-first-retry"</code>, <code>screenshot: "only-on-failure"</code>, <code>video: "retain-on-failure"</code>); mở chúng bằng <code>npm run report</code>. Viewport cố định <code>1440×900</code> để sidebar responsive luôn ở trạng thái mở rộng.</p>
+    </section>
+
+    <section id="ci">
+      <p class="kicker">e2e/CI-EXAMPLE.yml</p>
+      <h2>Trên CI</h2>
+      <p class="lead">Workflow mẫu đã có sẵn, chỉ cần copy thành <code>.github/workflows/e2e.yml</code> là bật.</p>
+      <ul class="notes">
+        <li>Dịch vụ <code>postgres:16</code> kèm healthcheck; <code>prisma migrate deploy</code> rồi <code>npm run seed</code>.</li>
+        <li>Chỉ cài Chromium (<code>--with-deps</code>). Playwright tự dựng BE+FE qua <code>webServer</code>, nên không cần bước "start server &amp; wait" thủ công.</li>
+        <li><code>retries: 2</code>, <code>workers: 1</code>, <code>forbidOnly</code> bật — một <code>test.only</code> bỏ quên sẽ làm đỏ CI thay vì âm thầm bỏ qua phần còn lại.</li>
+        <li>Reporter <code>github</code> + <code>html</code>; report được upload thành artifact, giữ 14 ngày, kể cả khi job fail.</li>
+      </ul>
+    </section>
+
+    <section id="heal">
+      <p class="kicker">npm run heal</p>
+      <h2>Tự chữa lành, ở đúng chỗ nên chữa</h2>
+      <p class="lead">Chữa lành ở đây là <strong>lúc viết</strong>, không phải lúc chạy: không có locator nào tự âm thầm đổi giữa lúc CI đang chạy. Thứ được tự động hoá là phần con người hay làm sai — chẩn đoán.</p>
+
+      <h3>Bước 1: kiểm tra môi trường trước khi đổ lỗi cho test</h3>
+      <p><code>scripts/preflight.mjs</code> xác nhận backend trả lời và cả bốn tài khoản seed vẫn đăng nhập được. Nếu hỏng, quy trình dừng ngay tại đó — vì một agent bắt đầu sửa spec trên một database chưa seed sẽ "sửa" hàng chục test đang đúng thành sai. Script cũng nói thẳng khi nó <em>chưa kiểm được gì</em> (server chưa bật, Playwright sẽ tự dựng), thay vì báo an toàn giả.</p>
+
+      <h3>Bước 2: mỗi thất bại được phân loại, kèm luật áp dụng</h3>
+      <p>Reporter <code>failure-report.reporter.ts</code> ghi <code>heal/FAILURES.md</code> và <code>heal/failures.json</code>. Cách sửa hợp lệ phụ thuộc vào <em>loại</em> thất bại, nên loại là thứ được ghi ra trước:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Loại</th><th>Cách sửa hợp lệ</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">SETUP</td><td>Không phải lỗi spec. Chạy <code>npm run seed</code>, bật backend. Nhiều test hỏng cùng lúc kiểu này <em>chính là</em> chẩn đoán.</td></tr>
+            <tr><td class="mono">LOCATOR</td><td>Sửa trong <code>pages/</code>, giữ selector hướng người dùng. App không có <code>data-testid</code>: mất tên khả truy cập thường là hồi quy accessibility, đi vòng qua nó là phá mất tín hiệu.</td></tr>
+            <tr><td class="mono">TIMEOUT</td><td>Chờ đúng thứ cần chờ (<code>waitForApi</code>), đừng nâng timeout. Không bao giờ chờ <code>networkidle</code>.</td></tr>
+            <tr><td class="mono">HTTP_STATUS</td><td>Quyết định bên nào sai — route hay kỳ vọng — trước khi sửa. Đừng nới kỳ vọng thành một danh sách mã cho xanh.</td></tr>
+            <tr><td class="mono">PLAN_LIMIT</td><td>402 nghĩa là chạm trần gói cước. Nếu spec không nói <em>về</em> cái trần đó, hãy chuyển nó sang <code>fundedCompany</code>. Đừng nâng gói của công ty lên.</td></tr>
+            <tr><td class="mono">MONEY</td><td><strong>Nghi ngờ ứng dụng, không nghi ngờ test.</strong> Không nới sai số, không xoá assertion. Nếu tin test đúng: <code>test.fail()</code> kèm chú thích, không bao giờ <code>test.fixme()</code>.</td></tr>
+            <tr><td class="mono">ASSERTION</td><td>Đọc thứ ứng dụng thực sự tạo ra trước khi kết luận kỳ vọng sai.</td></tr>
+          </tbody>
+          <caption><code>heal/</code> nằm trong .gitignore và được sinh lại mỗi lần chạy. Healer agent đã được trỏ vào báo cáo này thay vì đọc log terminal — log làm mất chính phần phân loại.</caption>
+        </table>
+      </div>
+<pre><code>npm run heal        <span class="cmt"># preflight → cả suite → báo cáo phân loại</span>
+npm run heal:api    <span class="cmt"># thu hẹp về project api</span>
+npm run heal:ui     <span class="cmt"># thu hẹp về project chromium</span></code></pre>
+    </section>
+
+    <section id="agents">
+      <p class="kicker">e2e/.claude/agents/</p>
+      <h2>Playwright Agents: chữa test lúc viết, không phải lúc chạy</h2>
+      <p><code>npx playwright init-agents --loop=claude</code> đã được chạy ở đây, để lại ba định nghĩa agent:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Agent</th><th>Làm gì</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">playwright-test-planner</td><td>Khám phá ứng dụng và viết test plan vào <code>specs/</code></td></tr>
+            <tr><td class="mono">playwright-test-generator</td><td>Biến một plan thành file spec thật</td></tr>
+            <tr><td class="mono">playwright-test-healer</td><td>Chạy suite, debug thất bại, sửa code tới khi xanh</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Khởi động Claude Code <strong>từ chính thư mục <code>e2e/</code></strong> (file <code>.mcp.json</code> ở đây trỏ tới MCP server <code>playwright-test</code>, và agent phân giải <code>playwright.config.ts</code> theo thư mục làm việc), rồi ra lệnh <em>"Fix the failing tests"</em>.</p>
+      <div class="callout">
+        <span class="label">Đây là chữa lúc viết, không phải lúc chạy</span>
+        <p>Kết quả là một git diff <em>bạn phải review</em>. Agent gốc được phép làm im một test cứng đầu bằng <code>test.fixme()</code> — điều đó sẽ giấu mất một bug thật, nên <code>playwright-test-healer.md</code> đã được nối thêm một mục luật riêng cho dự án:</p>
+        <p><strong>Không bao giờ nới lỏng một assertion tài chính để test xanh.</strong> Toán số dư, tính phí, từ chối OTP và các kiểm tra cách ly tenancy đều mã hoá hành vi mong muốn — nếu một trong số đó đỏ, khả năng cao nhất là backend có bug thật. Ưu tiên <code>test.fail()</code> hơn <code>test.fixme()</code>: <code>fixme</code> giấu hồi quy, <code>fail</code> vẫn chạy và báo ngay khi test bắt đầu xanh trở lại. Và trước khi đổ lỗi cho test, hãy kiểm tra môi trường — cả suite đỏ cùng lúc thường chỉ có nghĩa là database chưa được seed.</p>
+        <p>Giữ lại mục luật đó nếu bạn chạy lại <code>init-agents</code> — lệnh này ghi đè file.</p>
+      </div>
+    </section>
+
+    <section id="luu-y">
+      <p class="kicker">trạng thái hiện tại</p>
+      <h2>Vài điểm lệch nên dọn</h2>
+      <p class="lead">Những thứ dưới đây không làm suite đỏ, nhưng sẽ làm người đọc tài liệu bối rối.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Điểm lệch</th><th>Hiện trạng</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Maker/checker của Credit Apply</td>
+              <td>Ranh giới quyền đã có test, nhưng luật "người duyệt phải khác người tạo" thì chưa — cần một fixture dựng công ty đi hết KYB → ký hợp đồng → tạo đơn → chuyển checker. Cố ý bỏ trống còn hơn viết một test có thể cấp tín dụng thật.</td>
+              <td><span class="pill mid">cần bổ sung</span></td>
+            </tr>
+            <tr>
+              <td>README nhắc <code>tests/ui/seed.spec.ts</code></td>
+              <td>File đó đã được chuyển vào <code>_to_delete/</code>. Nếu bạn định dùng lại generator agent thì cần khôi phục nó; nếu không, nên xoá đoạn nhắc trong README.</td>
+              <td><span class="pill hot">tài liệu lệch</span></td>
+            </tr>
+            <tr>
+              <td>README nói "Firefox/WebKit"</td>
+              <td>Config chỉ định nghĩa project <code>webkit</code>; chưa có project Firefox.</td>
+              <td><span class="pill hot">tài liệu lệch</span></td>
+            </tr>
+            <tr>
+              <td>Rác dữ liệu sau mỗi lần chạy</td>
+              <td>Mỗi lượt để lại vài công ty dùng một lần (cặp sandbox + spec đăng ký). Vô hại, nhưng nên seed lại khi DB local nhiễu.</td>
+              <td><span class="pill">chấp nhận được</span></td>
+            </tr>
+            <tr>
+              <td><code>fullyParallel: false</code></td>
+              <td>Lý do gốc (an toàn số dư) không còn. Có thể thử bật lại sau khi tách phần mutate spend-policy trong <code>approvals.api.spec.ts</code>.</td>
+              <td><span class="pill">cơ hội tối ưu</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Tổng hợp từ mã nguồn trong <code>hoanglam-bank/e2e/</code>: <code>playwright.config.ts</code>, <code>fixtures/test.ts</code>, <code>utils/env.ts</code>, <code>utils/api-client.ts</code>, <code>pages/*.page.ts</code>, 13 file spec trong <code>tests/</code>, <code>CI-EXAMPLE.yml</code> và <code>.claude/agents/playwright-test-healer.md</code>. Số liệu đếm tại thời điểm 02/09/2026.</p>
+  </footer>
+
+</div>

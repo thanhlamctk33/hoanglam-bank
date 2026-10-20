@@ -44,10 +44,28 @@ export const MEMBER_USER = {
   password: envStr("E2E_MEMBER_PASSWORD", "password123"),
 };
 
-/** Seeded back-office operator, for the /dashboard console. */
+/**
+ * Seeded back-office operator, for the /dashboard console.
+ *
+ * Note the password: `backend/prisma/seed.ts` hashes "staff123" for both
+ * staff accounts, not the "password123" every customer account uses. This
+ * default was wrong until now, which meant the staff half of auth.setup.ts
+ * (and the "refuses a staff account on the customer gate" spec) was signing
+ * in with the wrong credentials.
+ */
 export const STAFF_USER = {
   email: envStr("E2E_STAFF_EMAIL", "admin@lambank.dev"),
-  password: envStr("E2E_STAFF_PASSWORD", "password123"),
+  password: envStr("E2E_STAFF_PASSWORD", "staff123"),
+};
+
+/**
+ * A SECOND seeded operator. Credit Apply is maker/checker between two staff
+ * members — the same person may not forward and then approve — so the
+ * back-office specs need two distinct staff identities to exercise it.
+ */
+export const CHECKER_USER = {
+  email: envStr("E2E_CHECKER_EMAIL", "checker@lambank.dev"),
+  password: envStr("E2E_CHECKER_PASSWORD", "staff123"),
 };
 
 /**
@@ -65,3 +83,15 @@ export const STAFF_STORAGE_STATE_PATH = ".auth/staff.json";
 
 /** Set E2E_NO_SERVER=1 when the backend/frontend are already running. */
 export const REUSE_RUNNING_SERVERS = process.env.E2E_NO_SERVER === "1";
+
+/**
+ * Opening balance wired into the `sandbox` fixture's payer account.
+ *
+ * Big enough that no spec can drain it over a full run, and big enough that
+ * the "amount beyond the available balance" specs still fail on the balance
+ * check rather than on the KYB per-transaction ceiling. Well under the
+ * 1,000,000 cap on POST /accounts/:id/deposit.
+ */
+export const SANDBOX_OPENING_BALANCE = Number(
+  envStr("E2E_SANDBOX_BALANCE", "50000")
+);
