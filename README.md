@@ -214,8 +214,8 @@ docker compose -f docker-compose.logging.yml down -v
 
 | Document | Read it when you want… |
 | --- | --- |
-| [`docs/HUONG-DAN-SU-DUNG-VA-DEMO.md`](docs/HUONG-DAN-SU-DUNG-VA-DEMO.md) | **Start here** — overview, feature map, and a 15-minute demo script |
-| [`docs/KIEN-TRUC-BACKEND.md`](docs/KIEN-TRUC-BACKEND.md) | How the backend is organized and how a request flows through it |
-| [`docs/GHI-CHU-THIET-KE.md`](docs/GHI-CHU-THIET-KE.md) | Details on each feature and why it was designed that way |
+| [`docs/USER-GUIDE-AND-DEMO.md`](docs/USER-GUIDE-AND-DEMO.md) | **Start here** — overview, feature map, and a 15-minute demo script |
+| [`docs/BACKEND-ARCHITECTURE.md`](docs/BACKEND-ARCHITECTURE.md) | How the backend is organized and how a request flows through it |
+| [`docs/DESIGN-NOTES.md`](docs/DESIGN-NOTES.md) | Details on each feature and why it was designed that way |
 | [`frontend/NAMING-CONVENTIONS.md`](frontend/NAMING-CONVENTIONS.md) | Naming rules for frontend code |
 | [`e2e/README.md`](e2e/README.md) | How the end-to-end tests are organized and run |
